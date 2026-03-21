@@ -5,6 +5,7 @@ import json
 import csv
 from functools import wraps
 from dotenv import load_dotenv
+from llm import generate_response
 
 load_dotenv()
 app = Flask(__name__)
@@ -1053,6 +1054,114 @@ def reports():
             "validation_issues": validation,
         }
     )
+
+
+@app.route("/ai_suggestions")
+@login_required
+def ai_suggestions():
+    selected_year = request.args.get("year")
+    selected_year = int(selected_year) if selected_year else None
+
+    where = "WHERE year=?" if selected_year else ""
+    params = [selected_year] if selected_year else []
+
+    summary_rows = con.execute(
+        f"""
+        SELECT year, class_name, COUNT(*) AS entries
+        FROM timetable
+        {where}
+        GROUP BY year, class_name
+        ORDER BY year, class_name
+        """,
+        params,
+    ).fetchall()
+    validation = _collect_validation_issues()
+    issues_for_scope = [i for i in validation if not selected_year or f"Y{selected_year}" in i]
+
+    summary_text = "\n".join([f"- Y{r[0]} {r[1]}: {r[2]} scheduled slots" for r in summary_rows]) or "- No timetable entries yet."
+    issues_text = "\n".join([f"- {i}" for i in issues_for_scope]) or "- No validation issues found."
+
+    prompt = f"""
+You are an academic timetable optimization assistant.
+Return concise, practical recommendations to improve the schedule quality.
+
+Scope year: {selected_year if selected_year else "All years"}
+
+Current schedule summary:
+{summary_text}
+
+Detected issues:
+{issues_text}
+
+Give:
+1) Top 5 recommendations in priority order.
+2) For each recommendation, mention expected impact.
+3) If no issues are detected, provide optimization ideas (faculty load balancing, room utilization, and lab continuity).
+Use plain text bullets only.
+""".strip()
+
+    advice = generate_response(prompt)
+    return jsonify(
+        {
+            "scope_year": selected_year,
+            "issues_count": len(issues_for_scope),
+            "advice": advice,
+        }
+    )
+
+
+@app.route("/ai_assistant", methods=["POST"])
+@login_required
+def ai_assistant():
+    payload = request.json or {}
+    selected_year = payload.get("year")
+    selected_year = int(selected_year) if selected_year else None
+    user_question = (payload.get("question") or "").strip()
+    if not user_question:
+        return jsonify({"error": "question is required"}), 400
+
+    where = "WHERE year=?" if selected_year else ""
+    params = [selected_year] if selected_year else []
+    summary_rows = con.execute(
+        f"""
+        SELECT year, class_name, COUNT(*) AS entries
+        FROM timetable
+        {where}
+        GROUP BY year, class_name
+        ORDER BY year, class_name
+        """,
+        params,
+    ).fetchall()
+    validation = _collect_validation_issues()
+    issues_for_scope = [i for i in validation if not selected_year or f"Y{selected_year}" in i]
+
+    summary_text = "\n".join([f"- Y{r[0]} {r[1]}: {r[2]} scheduled slots" for r in summary_rows]) or "- No timetable entries yet."
+    issues_text = "\n".join([f"- {i}" for i in issues_for_scope]) or "- No validation issues found."
+
+    prompt = f"""
+You are an AI assistant for timetable quality improvement in a college scheduling system.
+Use the provided schedule summary and validation issues to answer the user's question.
+Prefer concrete, implementable suggestions.
+
+Scope year: {selected_year if selected_year else "All years"}
+
+Current schedule summary:
+{summary_text}
+
+Detected issues:
+{issues_text}
+
+User question:
+{user_question}
+
+Response format:
+- Keep response concise and practical.
+- Use bullet points.
+- Include a short "Next steps" section at the end.
+""".strip()
+
+    answer = generate_response(prompt)
+    return jsonify({"scope_year": selected_year, "question": user_question, "answer": answer})
 
 
 @app.route("/toggle_lock", methods=["POST"])

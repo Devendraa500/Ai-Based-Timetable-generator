@@ -22,7 +22,28 @@
     <div id="reportBox" class="mt-2"></div>
 </div>
 
-<div id="grid"></div>
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div id="grid"></div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card-box ai-sidebar">
+            <h5 class="mb-1">AI Assistant</h5>
+            <div class="muted mb-3">Ask for timetable improvements, conflict fixes, and optimization ideas.</div>
+            <div id="aiChat" class="ai-chat mb-2">
+                <div class="ai-msg ai-msg-assistant">
+                    Ask a question like "How can I reduce faculty overload for this year?"
+                </div>
+            </div>
+            <textarea id="aiQuestion" class="form-control mb-2" rows="3" placeholder="Type your question..."></textarea>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-primary btn-sm" onclick="askAI()">Ask AI</button>
+                <button class="btn btn-outline-primary btn-sm" onclick="askQuickImprovements()">Quick Improvements</button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="clearAIChat()">Clear</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <style>
 td { padding: 8px; vertical-align: top; min-width: 180px; }
@@ -58,9 +79,42 @@ body.dark .free-cell {
     color: #9ca3af !important;
 }
 @media print {
-    button, select, #reportBox { display: none !important; }
+    button, select, #reportBox, .ai-sidebar { display: none !important; }
     .card-box { border: 1px solid #ddd; box-shadow: none; }
     body { background: #fff !important; }
+}
+.ai-sidebar { position: sticky; top: 12px; }
+.ai-chat {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    height: 340px;
+    overflow-y: auto;
+    background: var(--panel);
+}
+.ai-msg {
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 14px;
+}
+.ai-msg-user {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+}
+.ai-msg-assistant {
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+}
+body.dark .ai-msg-user {
+    background: #172554;
+    border-color: #1d4ed8;
+}
+body.dark .ai-msg-assistant {
+    background: #111827;
+    border-color: #374151;
 }
 </style>
 
@@ -185,6 +239,59 @@ reportBox.innerHTML = `
 <div><b>Total:</b> ${data.total_entries}, <b>Locked:</b> ${data.locked_entries}, <b>Manual:</b> ${data.manual_entries}</div>
 <div><b>By Year:</b> ${data.by_year.map(x=>`Y${x.year}:${x.entries}`).join(", ")}</div>
 <div><b>Validation Issues:</b> ${data.validation_issues.length}</div>`;
+});
+}
+
+function appendAIMessage(role, text){
+const chat = document.getElementById("aiChat");
+const div = document.createElement("div");
+div.className = "ai-msg " + (role === "user" ? "ai-msg-user" : "ai-msg-assistant");
+div.textContent = text;
+chat.appendChild(div);
+chat.scrollTop = chat.scrollHeight;
+}
+
+function clearAIChat(){
+document.getElementById("aiChat").innerHTML = `<div class="ai-msg ai-msg-assistant">Chat cleared. Ask a new timetable improvement question.</div>`;
+}
+
+function askQuickImprovements(){
+aiQuestion.value = "Give top 5 improvement suggestions for this year's timetable and mention expected impact.";
+askAI();
+}
+
+function askAI(){
+const question = (aiQuestion.value || "").trim();
+if(!question){
+    alert("Please type a question for the AI assistant.");
+    return;
+}
+const year = yearSelect.value || "1";
+appendAIMessage("user", `Year ${year}: ${question}`);
+aiQuestion.value = "";
+appendAIMessage("assistant", "Analyzing timetable...");
+fetch('/ai_assistant',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body: JSON.stringify({year: parseInt(year), question})
+}).then(r=>r.json()).then(data=>{
+    const chat = document.getElementById("aiChat");
+    const loading = chat.querySelector(".ai-msg:last-child");
+    if(loading && loading.textContent === "Analyzing timetable..."){
+        loading.remove();
+    }
+    if(data.error){
+        appendAIMessage("assistant", "Error: " + data.error);
+        return;
+    }
+    appendAIMessage("assistant", data.answer || "No response from AI.");
+}).catch(()=>{
+    const chat = document.getElementById("aiChat");
+    const loading = chat.querySelector(".ai-msg:last-child");
+    if(loading && loading.textContent === "Analyzing timetable..."){
+        loading.remove();
+    }
+    appendAIMessage("assistant", "Failed to reach AI assistant endpoint.");
 });
 }
 
