@@ -1,0 +1,6 @@
+flask
+duckdb
+openai
+python-dotenv
+openpyxl
+reportlab

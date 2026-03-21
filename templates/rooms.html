@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<h3 class="mb-1">Room Management</h3>
+<div class="muted mb-3">Lab room capacities are used for batch-wise lab allocation.</div>
+
+<div class="card-box">
+    <input id="name" class="form-control mb-2" placeholder="Room name">
+    <div class="row g-2 mb-2">
+        <div class="col-md-6">
+            <select id="type" class="form-select">
+                <option>Classroom</option>
+                <option>Lab</option>
+            </select>
+        </div>
+        <div class="col-md-6"><input id="capacity" type="number" class="form-control" value="60" placeholder="Capacity"></div>
+    </div>
+    <button class="btn btn-warning" onclick="addRoom()">Add Room</button>
+</div>
+
+<div id="list" class="mt-3"></div>
+
+<script>
+function addRoom(){
+fetch('/add_room',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body: JSON.stringify({
+name: document.getElementById("name").value,
+type: document.getElementById("type").value,
+capacity: parseInt(document.getElementById("capacity").value || "60"),
+department:"General"
+})
+}).then(()=>loadRooms());
+}
+
+function loadRooms(){
+fetch('/get_rooms')
+.then(res=>res.json())
+.then(data=>{
+list.innerHTML=data.map(r=>`
+<div class="card-box mt-2">
+<b>${r.name}</b> (${r.type})<br>
+Capacity: ${r.capacity}
+</div>`).join("");
+});
+}
+loadRooms();
+</script>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<h3 class="mb-1">Faculty Management</h3>
+<div class="muted mb-3">Restrict faculty to specific years and workload limits.</div>
+
+<div class="card-box">
+    <input id="name" class="form-control mb-2" placeholder="Faculty name">
+    <input id="dept" class="form-control mb-2" placeholder="Department">
+    <input id="subjects" class="form-control mb-2" placeholder="Subjects handled (comma separated)">
+    <div class="row g-2 mb-2">
+        <div class="col-md-6"><input id="max_day" type="number" class="form-control" value="4" placeholder="Max slots/day"></div>
+        <div class="col-md-6"><input id="max_week" type="number" class="form-control" value="20" placeholder="Max slots/week"></div>
+    </div>
+    <label class="form-label">Allowed years</label>
+    <div class="mb-3">
+        <label class="me-3"><input type="checkbox" class="year-check" value="1" checked> 1st</label>
+        <label class="me-3"><input type="checkbox" class="year-check" value="2" checked> 2nd</label>
+        <label class="me-3"><input type="checkbox" class="year-check" value="3" checked> 3rd</label>
+        <label class="me-3"><input type="checkbox" class="year-check" value="4" checked> 4th</label>
+    </div>
+    <button class="btn btn-primary" onclick="addFaculty()">Add Faculty</button>
+</div>
+
+<div id="list" class="mt-3"></div>
+
+<script>
+function selectedYears(){
+    return [...document.querySelectorAll(".year-check:checked")].map(x=>parseInt(x.value));
+}
+
+function addFaculty(){
+fetch('/add_faculty',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body: JSON.stringify({
+name: document.getElementById("name").value,
+department: document.getElementById("dept").value,
+subjects: document.getElementById("subjects").value.split(",").map(x=>x.trim()).filter(Boolean),
+max_day: parseInt(document.getElementById("max_day").value || "4"),
+max_week: parseInt(document.getElementById("max_week").value || "20"),
+allowed_years: selectedYears(),
+unavailable:[]
+})
+}).then(()=>loadFaculty());
+}
+
+function loadFaculty(){
+fetch('/get_faculty')
+.then(res=>res.json())
+.then(data=>{
+list.innerHTML=data.map(f=>`
+<div class="card-box mt-2">
+<b>${f.name}</b> (${f.department})<br>
+Allowed years: ${f.allowed_years.join(", ")} | Daily max: ${f.max_day}, Weekly max: ${f.max_week}
+</div>`).join("");
+});
+}
+loadFaculty();
+</script>
+{% endblock %}

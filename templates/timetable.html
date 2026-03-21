@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h3 class="mb-0">Timetable</h3>
+        <div class="muted">Select year to view independent timetable tables per division.</div>
+    </div>
+    <div class="d-flex gap-2">
+        <select id="yearSelect" class="form-select" onchange="loadTable()" style="min-width:180px;"></select>
+        <button class="btn btn-outline-primary" onclick="loadTable()">Refresh</button>
+        <button class="btn btn-outline-secondary" onclick="regenUnlocked()">Regenerate Unlocked</button>
+        <button class="btn btn-success" onclick="downloadCSV()">Export CSV</button>
+        <button class="btn btn-success" onclick="downloadXLSX()">Export XLSX</button>
+        <button class="btn btn-danger" onclick="downloadPDF()">Export PDF</button>
+        <button class="btn btn-dark" onclick="window.print()">Print</button>
+    </div>
+</div>
+<div class="card-box mb-3">
+    Click a filled slot to edit manually. Double-click any slot to lock/unlock that class+day+slot.
+    Manual edits are preserved by partial regeneration only when locked.
+    <button class="btn btn-sm btn-outline-dark ms-2" onclick="loadReports()">Load Report</button>
+    <div id="reportBox" class="mt-2"></div>
+</div>
+
+<div id="grid"></div>
+
+<style>
+td { padding: 8px; vertical-align: top; min-width: 180px; }
+.table td, .table th { color: #111827; }
+.free-cell { color: #6b7280; }
+.entry {
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 10px;
+    padding: 6px;
+    margin-bottom: 6px;
+    color: #111827;
+}
+body.dark .entry {
+    background: #1f2848;
+    border-color: #334155;
+    color: #e5e7eb;
+}
+body.dark .table td,
+body.dark .table th,
+body.dark .table {
+    color: #e5e7eb !important;
+    border-color: #334155 !important;
+}
+body.dark .table tr th {
+    background: #0f172a;
+    color: #f8fafc !important;
+}
+body.dark .table tr td {
+    background: #0b1220;
+}
+body.dark .free-cell {
+    color: #9ca3af !important;
+}
+@media print {
+    button, select, #reportBox { display: none !important; }
+    .card-box { border: 1px solid #ddd; box-shadow: none; }
+    body { background: #fff !important; }
+}
+</style>
+
+<script>
+const days=["Monday","Tuesday","Wednesday","Thursday","Friday"];
+const slots=["09:00-10:00","10:00-11:00","11:00-12:00","13:00-14:00","14:00-15:00","15:00-16:00"];
+
+function loadYears(){
+fetch('/get_years').then(r=>r.json()).then(years=>{
+    yearSelect.innerHTML = years.map(y=>`<option value="${y}">${y} Year</option>`).join("");
+    loadTable();
+});
+}
+
+function loadTable(){
+const year = yearSelect.value || "1";
+fetch('/get_timetable?year=' + year)
+.then(r=>r.json())
+.then(data=>{
+const classes = [...new Set(data.map(e=>e.class_name))];
+if(!classes.length){
+    grid.innerHTML = `<div class="card-box">No timetable generated for Year ${year}.</div>`;
+    return;
+}
+let html = "";
+classes.forEach(cls=>{
+const classData = data.filter(x=>x.class_name===cls);
+const safeCls = cls.replace(/'/g, "\\'");
+html += `<div class="card-box mb-3"><h5 class="mb-3">${cls}</h5>`;
+html+="<div class='table-responsive'><table class='table table-bordered align-middle'>";
+html+="<tr><th style='width:130px'>Time / Day</th>"+days.map(d=>`<th>${d}</th>`).join("")+"</tr>";
+
+slots.forEach((time, slotIndex)=>{
+html+=`<tr><th>${time}</th>`;
+
+days.forEach(day=>{
+let safeDay = day.replace(/'/g, "\\'");
+let entries = classData.filter(e=>e.day===day && e.slot_index===slotIndex);
+if(!entries.length){
+    html += `<td class="free-cell" ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},null)">Free</td>`;
+} else {
+    html += `<td ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},'${encodeURIComponent(JSON.stringify(entries[0]))}')">${entries.map(entry=>`
+      <div class="entry">
+        <b>${entry.subject}</b> ${entry.is_lab ? "<span class='badge text-bg-info'>Lab</span>" : ""}
+        <div>${entry.faculty}</div>
+        <small>${entry.room}${entry.batch_name ? " | Batch " + entry.batch_name : ""} ${entry.locked ? "| Locked" : ""}</small>
+      </div>
+    `).join("")}</td>`;
+}
+});
+
+html+="</tr>";
+});
+
+html+="</table></div></div>";
+});
+grid.innerHTML=html;
+});
+}
+
+function downloadCSV(){
+const year = yearSelect.value || "1";
+window.location='/export_csv?year=' + year;
+}
+function downloadXLSX(){ window.location='/export_xlsx'; }
+function downloadPDF(){
+const year = yearSelect.value || "1";
+window.location='/export_pdf?year=' + year;
+}
+
+function toggleLock(className, day, slotIndex){
+const year = yearSelect.value || "1";
+fetch('/toggle_lock',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body: JSON.stringify({year: parseInt(year), class_name: className, day: day, slot_index: slotIndex})
+}).then(()=>loadTable());
+}
+
+function editSlot(className, day, slotIndex, entryEncoded){
+const entry = entryEncoded ? JSON.parse(decodeURIComponent(entryEncoded)) : null;
+const subject = prompt("Subject (leave blank to clear slot):", entry?.subject || "");
+if(subject === null) return;
+if(subject === ""){
+    saveManual(className, day, slotIndex, {subject:""});
+    return;
+}
+const faculty = prompt("Faculty:", entry?.faculty || "");
+if(faculty === null) return;
+const room = prompt("Room:", entry?.room || "");
+if(room === null) return;
+const batch = prompt("Batch name (optional):", entry?.batch_name || "");
+if(batch === null) return;
+const isLab = confirm("Is this a lab slot?");
+saveManual(className, day, slotIndex, {subject, faculty, room, batch_name: batch, is_lab: isLab});
+}
+
+function saveManual(className, day, slotIndex, payload){
+const year = yearSelect.value || "1";
+fetch('/manual_edit_slot',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body: JSON.stringify({...payload, year: parseInt(year), class_name: className, day, slot_index: slotIndex})
+}).then(()=>loadTable());
+}
+
+function regenUnlocked(){
+const year = yearSelect.value || "1";
+fetch('/regenerate_unlocked',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body: JSON.stringify({year: parseInt(year)})
+}).then(r=>r.json()).then(data=>{
+alert(`${data.message}. Placed: ${data.placed_count || 0}, Unplaced: ${(data.unplaced || []).length}`);
+loadTable();
+});
+}
+
+function loadReports(){
+fetch('/reports').then(r=>r.json()).then(data=>{
+reportBox.innerHTML = `
+<div><b>Total:</b> ${data.total_entries}, <b>Locked:</b> ${data.locked_entries}, <b>Manual:</b> ${data.manual_entries}</div>
+<div><b>By Year:</b> ${data.by_year.map(x=>`Y${x.year}:${x.entries}`).join(", ")}</div>
+<div><b>Validation Issues:</b> ${data.validation_issues.length}</div>`;
+});
+}
+
+loadYears();
+</script>
+
+{% endblock %}
