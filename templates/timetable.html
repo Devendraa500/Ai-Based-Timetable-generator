@@ -13,6 +13,8 @@
         <button class="btn btn-success" onclick="downloadXLSX()">Export XLSX</button>
         <button class="btn btn-danger" onclick="downloadPDF()">Export PDF</button>
         <button class="btn btn-dark" onclick="window.print()">Print</button>
+        <input type="file" id="timetableImportFile" class="d-none" accept=".pdf,image/png,image/jpeg,image/webp,image/gif" onchange="importTimetableFromFile()">
+        <button type="button" class="btn btn-outline-info" onclick="document.getElementById('timetableImportFile').click()" title="Uses OpenAI or Gemini vision (API key)">Import PDF/Image</button>
     </div>
 </div>
 <div class="card-box mb-3">
@@ -20,6 +22,16 @@
     Manual edits are preserved by partial regeneration only when locked.
     <button class="btn btn-sm btn-outline-dark ms-2" onclick="loadReports()">Load Report</button>
     <div id="reportBox" class="mt-2"></div>
+    <div class="mt-3 pt-3 border-top">
+        <div class="muted small mb-2">
+            <b>AI import:</b> Upload a timetable PDF or screenshot. The selected <b>year</b> above is applied to all imported rows.
+            Unlocked slots for that year are replaced; locked slots are kept.
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <label class="small mb-0">Default class label (if missing in file):</label>
+            <input type="text" id="defaultClassImport" class="form-control form-control-sm" style="max-width:200px" placeholder="e.g. Y1-A">
+        </div>
+    </div>
 </div>
 
 <div class="row g-3">
@@ -239,6 +251,39 @@ reportBox.innerHTML = `
 <div><b>Total:</b> ${data.total_entries}, <b>Locked:</b> ${data.locked_entries}, <b>Manual:</b> ${data.manual_entries}</div>
 <div><b>By Year:</b> ${data.by_year.map(x=>`Y${x.year}:${x.entries}`).join(", ")}</div>
 <div><b>Validation Issues:</b> ${data.validation_issues.length}</div>`;
+});
+}
+
+function importTimetableFromFile(){
+const inp = document.getElementById("timetableImportFile");
+if(!inp.files || !inp.files[0]) return;
+const fd = new FormData();
+fd.append("file", inp.files[0]);
+fd.append("year", yearSelect.value || "1");
+const dc = (document.getElementById("defaultClassImport").value || "").trim();
+if(dc) fd.append("default_class_name", dc);
+fetch("/import_timetable_file", { method: "POST", body: fd })
+.then(async r=>{
+let data = {};
+try { data = await r.json(); } catch (_) {}
+return { ok: r.ok, data };
+})
+.then(({ ok, data })=>{
+inp.value = "";
+if(!ok || data.error){
+    alert("Import failed: " + (data.error || "Unknown error"));
+    return;
+}
+let msg = `Imported ${data.inserted} row(s) into ${data.unique_slots || 0} unique class/day/slot cell(s). Model returned ${data.extracted_count || 0} entries; skipped/invalid: ${data.skipped_parse || 0}.`;
+if(data.warnings && data.warnings.length){
+    msg += "\n\n" + data.warnings.join("\n");
+}
+alert(msg);
+loadTable();
+})
+.catch(()=>{
+inp.value = "";
+alert("Import request failed.");
 });
 }
 

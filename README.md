@@ -87,6 +87,7 @@ Open: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 - `GET /validate`
 - `GET /ai_suggestions?year=<n>` (uses OpenAI/Gemini API key if configured)
 - `POST /ai_assistant` (question-based AI assistant for timetable improvements)
+- `POST /import_timetable_file` (multipart: `file`, form `year`, optional `default_class_name`) — PDF or image timetable extraction via vision API
 - `GET /get_timetable?year=<1|2|3|4>`
 - `POST /manual_edit_slot`
 - `POST /toggle_lock`
@@ -103,3 +104,4 @@ Open: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 - To enable AI suggestions, set at least one key in your environment:
   - `OPENAI_API_KEY`
   - `GEMINI_API_KEY`
+- PDF/image import uses the same keys (vision). If `OPENAI_API_KEY` is set, it is preferred; otherwise Gemini is used. Install `pymupdf` and `Pillow` (see `requirements.txt`).

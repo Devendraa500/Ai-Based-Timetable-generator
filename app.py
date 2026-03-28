@@ -3,12 +3,14 @@ import duckdb
 import os
 import json
 import csv
+import re
 from functools import wraps
 from dotenv import load_dotenv
-from llm import generate_response
+from llm import generate_response, extract_timetable_from_upload
 
 load_dotenv()
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 app.secret_key = os.getenv("APP_SECRET", "smart-timetable-secret")
 os.makedirs("database", exist_ok=True)
 con = duckdb.connect("database/db.duckdb")
@@ -22,6 +24,146 @@ SLOTS = [
     "14:00-15:00",
     "15:00-16:00",
 ]
+
+
+def _normalize_day(raw):
+    if raw is None:
+        return None
+    s = str(raw).strip().lower().replace(".", "")
+    if not s:
+        return None
+    aliases = {
+        "mon": "Monday",
+        "monday": "Monday",
+        "tue": "Tuesday",
+        "tues": "Tuesday",
+        "tuesday": "Tuesday",
+        "wed": "Wednesday",
+        "wednesday": "Wednesday",
+        "thu": "Thursday",
+        "thur": "Thursday",
+        "thurs": "Thursday",
+        "thursday": "Thursday",
+        "fri": "Friday",
+        "friday": "Friday",
+    }
+    if s in aliases:
+        return aliases[s]
+    for d in DAYS:
+        dl = d.lower()
+        if dl == s or dl.startswith(s[:3]):
+            return d
+    return None
+
+
+def _resolve_slot_index(entry):
+    si = entry.get("slot_index")
+    if si is not None and si != "":
+        try:
+            i = int(float(si))
+            if 0 <= i < len(SLOTS):
+                return i
+        except (TypeError, ValueError):
+            pass
+    tl = (entry.get("time_label") or entry.get("time_slot") or str(entry.get("time") or "")).strip()
+    for i, label in enumerate(SLOTS):
+        if label == tl or (tl and label in tl):
+            return i
+        if tl and label.split("-")[0].strip() in tl:
+            return i
+    m = re.search(r"(\d{1,2})\s*:\s*(\d{2})", tl)
+    if m:
+        tmin = int(m.group(1)) * 60 + int(m.group(2))
+        starts = [9 * 60, 10 * 60, 11 * 60, 13 * 60, 14 * 60, 15 * 60]
+        best_i, best_dist = 0, 10**9
+        for i, st in enumerate(starts):
+            dist = abs(tmin - st)
+            if dist < best_dist:
+                best_dist = dist
+                best_i = i
+        if best_dist <= 45:
+            return best_i
+    return None
+
+
+def _apply_extracted_timetable(year, entries, default_class_name):
+    warnings = []
+    default_class_name = (default_class_name or "").strip()
+    normalized = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        class_name = (e.get("class_name") or "").strip() or default_class_name
+        if not class_name:
+            continue
+        day = _normalize_day(e.get("day"))
+        if not day:
+            continue
+        slot_index = _resolve_slot_index(e)
+        if slot_index is None:
+            continue
+        subject = (e.get("subject") or "").strip()
+        if not subject:
+            continue
+        normalized.append(
+            {
+                "class_name": class_name,
+                "day": day,
+                "slot_index": slot_index,
+                "subject": subject,
+                "faculty": (e.get("faculty") or "").strip(),
+                "room": (e.get("room") or "").strip(),
+                "batch_name": (e.get("batch_name") or "").strip(),
+                "is_lab": bool(e.get("is_lab", False)),
+            }
+        )
+
+    if not normalized:
+        if not default_class_name:
+            warnings.append("No rows imported. Set a default class name if the file has no class column.")
+        else:
+            warnings.append("No valid rows after parsing. Check day names and time slots.")
+        return 0, 0, len(entries or []), warnings
+
+    by_key = {}
+    for row in normalized:
+        k = (row["class_name"], row["day"], row["slot_index"])
+        by_key[k] = row
+    rows = list(by_key.values())
+
+    con.execute("DELETE FROM timetable WHERE locked=FALSE AND year=?", [year])
+    next_id = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM timetable").fetchone()[0]
+    inserted = 0
+    for row in rows:
+        con.execute(
+            """
+            INSERT INTO timetable (
+                id,class,faculty,subject,room,day,time_slot,locked,year,class_name,batch_name,slot_index,slot_label,is_lab,is_manual
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            [
+                next_id,
+                row["class_name"],
+                row["faculty"],
+                row["subject"],
+                row["room"],
+                row["day"],
+                SLOTS[row["slot_index"]],
+                False,
+                year,
+                row["class_name"],
+                row["batch_name"],
+                row["slot_index"],
+                SLOTS[row["slot_index"]],
+                row["is_lab"],
+                True,
+            ],
+        )
+        next_id += 1
+        inserted += 1
+
+    skipped = max(0, len(entries) - len(normalized))
+    return inserted, len(rows), skipped, warnings
 
 
 def _table_columns(table_name):
@@ -1164,6 +1306,49 @@ Response format:
     return jsonify({"scope_year": selected_year, "question": user_question, "answer": answer})
 
 
+@app.route("/import_timetable_file", methods=["POST"])
+@login_required
+def import_timetable_file():
+    if "file" not in request.files:
+        return jsonify({"error": "file is required"}), 400
+    f = request.files["file"]
+    if not f or not f.filename:
+        return jsonify({"error": "empty file"}), 400
+
+    year_raw = request.form.get("year")
+    try:
+        year = int(year_raw) if year_raw is not None and str(year_raw).strip() != "" else None
+    except (TypeError, ValueError):
+        year = None
+    if year is None:
+        return jsonify({"error": "year is required"}), 400
+
+    default_class_name = (request.form.get("default_class_name") or "").strip()
+
+    raw = f.read()
+    if not raw:
+        return jsonify({"error": "empty file"}), 400
+
+    parsed, err = extract_timetable_from_upload(raw, f.filename, f.mimetype)
+    if err:
+        return jsonify({"error": err}), 400
+
+    entries = parsed.get("entries")
+    if not isinstance(entries, list) or not entries:
+        return jsonify({"error": "Model returned no usable entries", "hint": str(parsed)[:500]}), 400
+
+    inserted, unique_slots, skipped_parse, warnings = _apply_extracted_timetable(year, entries, default_class_name)
+    return jsonify(
+        {
+            "inserted": inserted,
+            "unique_slots": unique_slots,
+            "skipped_parse": skipped_parse,
+            "warnings": warnings,
+            "extracted_count": len(entries),
+        }
+    )
+
+
 @app.route("/toggle_lock", methods=["POST"])
 @login_required
 def toggle_lock():
@@ -1219,6 +1404,11 @@ def manual_edit_slot():
         ],
     )
     return jsonify({"status": "ok", "message": "Manual slot updated"})
+
+
+@app.errorhandler(413)
+def request_entity_too_large(_e):
+    return jsonify({"error": "File too large (max 10 MB)"}), 413
 
 
 if __name__ == "__main__":
