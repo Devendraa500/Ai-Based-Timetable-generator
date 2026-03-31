@@ -1,57 +1,92 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
         <h3 class="mb-0">Timetable</h3>
-        <div class="muted">Select year to view independent timetable tables per division.</div>
+        <div class="muted">Manual edits, AI import preview, version history, rollback, NLP queries, conflict explanations, summaries, and natural-language rules are enabled.</div>
     </div>
-    <div class="d-flex gap-2">
-        <select id="yearSelect" class="form-select" onchange="loadTable()" style="min-width:180px;"></select>
-        <button class="btn btn-outline-primary" onclick="loadTable()">Refresh</button>
+    <div class="d-flex gap-2 flex-wrap">
+        <select id="yearSelect" class="form-select" style="min-width:180px;"></select>
+        <button class="btn btn-outline-primary" onclick="loadAllForYear()">Refresh</button>
         <button class="btn btn-outline-secondary" onclick="regenUnlocked()">Regenerate Unlocked</button>
+        <button class="btn btn-outline-dark" onclick="saveSnapshot()">Save Snapshot</button>
         <button class="btn btn-success" onclick="downloadCSV()">Export CSV</button>
         <button class="btn btn-success" onclick="downloadXLSX()">Export XLSX</button>
         <button class="btn btn-danger" onclick="downloadPDF()">Export PDF</button>
         <button class="btn btn-dark" onclick="window.print()">Print</button>
-        <input type="file" id="timetableImportFile" class="d-none" accept=".pdf,image/png,image/jpeg,image/webp,image/gif" onchange="importTimetableFromFile()">
-        <button type="button" class="btn btn-outline-info" onclick="document.getElementById('timetableImportFile').click()" title="Uses OpenAI or Gemini vision (API key)">Import PDF/Image</button>
+        <input type="file" id="timetableImportFile" class="d-none" accept=".pdf,image/png,image/jpeg,image/webp,image/gif" onchange="previewImportFromFile()">
+        <button type="button" class="btn btn-outline-info" onclick="document.getElementById('timetableImportFile').click()" title="Uses OpenAI or Gemini vision (API key)">Preview Import</button>
     </div>
 </div>
+
 <div class="card-box mb-3">
-    Click a filled slot to edit manually. Double-click any slot to lock/unlock that class+day+slot.
-    Manual edits are preserved by partial regeneration only when locked.
+    Click a filled slot to edit manually. Double-click any slot to lock or unlock that class-day-slot. Roll back from the version history if needed.
     <button class="btn btn-sm btn-outline-dark ms-2" onclick="loadReports()">Load Report</button>
     <div id="reportBox" class="mt-2"></div>
     <div class="mt-3 pt-3 border-top">
         <div class="muted small mb-2">
-            <b>AI import:</b> Upload a timetable PDF or screenshot. The selected <b>year</b> above is applied to all imported rows.
-            Unlocked slots for that year are replaced; locked slots are kept.
+            <b>AI import preview:</b> Upload a timetable PDF or screenshot, review the extracted rows, correct them, then apply the import.
+            Locked slots remain protected.
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center">
             <label class="small mb-0">Default class label (if missing in file):</label>
-            <input type="text" id="defaultClassImport" class="form-control form-control-sm" style="max-width:200px" placeholder="e.g. Y1-A">
+            <input type="text" id="defaultClassImport" class="form-control form-control-sm" style="max-width:220px" placeholder="Fallback class label, e.g. Y1-A">
         </div>
     </div>
 </div>
 
+<div id="importPreviewBox" class="card-box mb-3 d-none">
+    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+        <div>
+            <h5 class="mb-0">Import Preview</h5>
+            <div class="muted small">Edit any extracted row before applying it to the selected year.</div>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" onclick="clearImportPreview()">Discard Preview</button>
+            <button class="btn btn-primary btn-sm" onclick="applyImportPreview()">Apply Preview</button>
+        </div>
+    </div>
+    <div id="importPreviewMeta" class="small muted mb-2"></div>
+    <div class="table-responsive">
+        <table class="table table-bordered align-middle small" id="importPreviewTable"></table>
+    </div>
+</div>
+
 <div class="row g-3">
-    <div class="col-lg-8">
+    <div class="col-xl-8">
         <div id="grid"></div>
     </div>
-    <div class="col-lg-4">
-        <div class="card-box ai-sidebar">
-            <h5 class="mb-1">AI Assistant</h5>
-            <div class="muted mb-3">Ask for timetable improvements, conflict fixes, and optimization ideas.</div>
-            <div id="aiChat" class="ai-chat mb-2">
-                <div class="ai-msg ai-msg-assistant">
-                    Ask a question like "How can I reduce faculty overload for this year?"
+    <div class="col-xl-4">
+        <div class="d-flex flex-column gap-3">
+            <div class="card-box ai-sidebar">
+                <h5 class="mb-1">Version History</h5>
+                <div class="muted mb-3 small">Restore the selected year from a previous snapshot.</div>
+                <div id="versionsBox" class="version-list"></div>
+            </div>
+            <div class="card-box ai-sidebar">
+                <h5 class="mb-1">NLP Assistant</h5>
+                <div class="muted mb-3">Ask timetable questions in plain English, generate summaries, explain conflicts, or use the full chatbot.</div>
+                <div id="aiChat" class="ai-chat mb-2">
+                    <div class="ai-msg ai-msg-assistant">Try: “Who has DBMS on Monday?”, “Show free slots for Y2-A”, or “Explain conflicts for this year.”</div>
+                </div>
+                <textarea id="aiQuestion" class="form-control mb-2" rows="3" placeholder="Type your timetable question here"></textarea>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-primary btn-sm" onclick="askDirectNLP()">Ask from Timetable</button>
+                    <button class="btn btn-outline-primary btn-sm" onclick="askAI()">Chatbot</button>
+                    <button class="btn btn-outline-info btn-sm" onclick="loadSummaryToChat()">Summary</button>
+                    <button class="btn btn-outline-warning btn-sm" onclick="loadConflictsToChat()">Explain Conflicts</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="clearAIChat()">Clear</button>
                 </div>
             </div>
-            <textarea id="aiQuestion" class="form-control mb-2" rows="3" placeholder="Type your question..."></textarea>
-            <div class="d-flex gap-2 flex-wrap">
-                <button class="btn btn-primary btn-sm" onclick="askAI()">Ask AI</button>
-                <button class="btn btn-outline-primary btn-sm" onclick="askQuickImprovements()">Quick Improvements</button>
-                <button class="btn btn-outline-secondary btn-sm" onclick="clearAIChat()">Clear</button>
+            <div class="card-box ai-sidebar">
+                <h5 class="mb-1">Natural-language Rules</h5>
+                <div class="muted mb-3">Examples: “Avoid labs on Friday afternoon”, “Keep DBMS in morning slots”, “Avoid Math on Monday”.</div>
+                <textarea id="ruleText" class="form-control mb-2" rows="3" placeholder="Type a scheduling rule in plain English"></textarea>
+                <div class="d-flex gap-2 flex-wrap mb-3">
+                    <button class="btn btn-sm btn-dark" onclick="saveRule()">Save Rule</button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('ruleText').value='Avoid labs on Friday afternoon'">Example</button>
+                </div>
+                <div id="rulesBox" class="version-list"></div>
             </div>
         </div>
     </div>
@@ -60,7 +95,7 @@
 <style>
 td { padding: 8px; vertical-align: top; min-width: 180px; }
 .table td, .table th { color: #111827; }
-.free-cell { color: #6b7280; }
+.free-cell { color: #6b7280; cursor: pointer; }
 .entry {
     background: #eef2ff;
     border: 1px solid #c7d2fe;
@@ -69,29 +104,15 @@ td { padding: 8px; vertical-align: top; min-width: 180px; }
     margin-bottom: 6px;
     color: #111827;
 }
-body.dark .entry {
-    background: #1f2848;
-    border-color: #334155;
-    color: #e5e7eb;
-}
-body.dark .table td,
-body.dark .table th,
-body.dark .table {
-    color: #e5e7eb !important;
-    border-color: #334155 !important;
-}
-body.dark .table tr th {
-    background: #0f172a;
-    color: #f8fafc !important;
-}
-body.dark .table tr td {
-    background: #0b1220;
-}
-body.dark .free-cell {
-    color: #9ca3af !important;
-}
+.version-item { border: 1px solid var(--border); border-radius: 12px; padding: 10px; margin-bottom: 10px; }
+.version-list { max-height: 360px; overflow-y: auto; }
+body.dark .entry { background: #1f2848; border-color: #334155; color: #e5e7eb; }
+body.dark .table td, body.dark .table th, body.dark .table { color: #e5e7eb !important; border-color: #334155 !important; }
+body.dark .table tr th { background: #0f172a; color: #f8fafc !important; }
+body.dark .table tr td { background: #0b1220; }
+body.dark .free-cell { color: #9ca3af !important; }
 @media print {
-    button, select, #reportBox, .ai-sidebar { display: none !important; }
+    button, select, #reportBox, .ai-sidebar, #importPreviewBox, #defaultClassImport { display: none !important; }
     .card-box { border: 1px solid #ddd; box-shadow: none; }
     body { background: #fff !important; }
 }
@@ -100,7 +121,7 @@ body.dark .free-cell {
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 10px;
-    height: 340px;
+    height: 320px;
     overflow-y: auto;
     background: var(--panel);
 }
@@ -112,235 +133,396 @@ body.dark .free-cell {
     word-wrap: break-word;
     font-size: 14px;
 }
-.ai-msg-user {
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-}
-.ai-msg-assistant {
-    background: #f3f4f6;
-    border: 1px solid #e5e7eb;
-}
-body.dark .ai-msg-user {
-    background: #172554;
-    border-color: #1d4ed8;
-}
-body.dark .ai-msg-assistant {
-    background: #111827;
-    border-color: #374151;
-}
+.ai-msg-user { background: #eff6ff; border: 1px solid #bfdbfe; }
+.ai-msg-assistant { background: #f3f4f6; border: 1px solid #e5e7eb; }
+body.dark .ai-msg-user { background: #172554; border-color: #1d4ed8; }
+body.dark .ai-msg-assistant { background: #111827; border-color: #374151; }
 </style>
 
 <script>
-const days=["Monday","Tuesday","Wednesday","Thursday","Friday"];
-const slots=["09:00-10:00","10:00-11:00","11:00-12:00","13:00-14:00","14:00-15:00","15:00-16:00"];
+const days = ["Monday","Tuesday","Wednesday","Thursday","Friday"];
+const slots = ["09:00-10:00","10:00-11:00","11:00-12:00","13:00-14:00","14:00-15:00","15:00-16:00"];
+let importPreviewEntries = [];
+const yearSelectEl = document.getElementById("yearSelect");
+const gridEl = document.getElementById("grid");
+const reportBoxEl = document.getElementById("reportBox");
+const aiQuestionEl = document.getElementById("aiQuestion");
+function esc(value){ return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function currentYear(){ return yearSelectEl?.value || localStorage.getItem("last_timetable_year") || "1"; }
 
 function loadYears(){
-fetch('/get_years').then(r=>r.json()).then(years=>{
-    yearSelect.innerHTML = years.map(y=>`<option value="${y}">${y} Year</option>`).join("");
+    fetch('/get_years')
+    .then(async r=>{
+        const data = await r.json().catch(()=>[]);
+        if(!r.ok) throw new Error(data.message || data.error || 'Failed to load years');
+        return Array.isArray(data) ? data : [];
+    })
+    .then(years=>{
+        const values = years.length ? years : [1];
+        yearSelectEl.innerHTML = values.map(y=>`<option value="${y}">${y} Year</option>`).join("");
+        const savedYear = localStorage.getItem('last_timetable_year');
+        if(savedYear && values.map(String).includes(String(savedYear))){
+            yearSelectEl.value = String(savedYear);
+        }
+        loadAllForYear();
+    })
+    .catch(err=>{
+        gridEl.innerHTML = `<div class="card-box text-danger">Unable to load schedule years: ${esc(err.message || err)}</div>`;
+    });
+}
+
+function loadAllForYear(){
     loadTable();
-});
+    loadVersions();
+    loadRules();
+    clearImportPreview();
 }
 
 function loadTable(){
-const year = yearSelect.value || "1";
-fetch('/get_timetable?year=' + year)
-.then(r=>r.json())
-.then(data=>{
-const classes = [...new Set(data.map(e=>e.class_name))];
-if(!classes.length){
-    grid.innerHTML = `<div class="card-box">No timetable generated for Year ${year}.</div>`;
-    return;
+    const year = currentYear();
+    localStorage.setItem('last_timetable_year', String(year));
+    fetch('/get_timetable?year=' + year)
+    .then(async r=>{
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(data.message || data.error || 'Failed to load timetable');
+        return Array.isArray(data) ? data : [];
+    })
+    .then(data=>{
+        const classes = [...new Set(data.map(e=>e.class_name))];
+        if(!classes.length){
+            gridEl.innerHTML = `<div class="card-box">No timetable generated for Year ${year}. Try selecting a different year or regenerate unlocked slots.</div>`;
+            return;
+        }
+        let html = "";
+        classes.forEach(cls=>{
+            const classData = data.filter(x=>x.class_name===cls);
+            const safeCls = cls.replace(/'/g, "\'");
+            html += `<div class="card-box mb-3"><h5 class="mb-3">${cls}</h5>`;
+            html += "<div class='table-responsive'><table class='table table-bordered align-middle'>";
+            html += "<tr><th style='width:130px'>Time / Day</th>" + days.map(d=>`<th>${d}</th>`).join("") + "</tr>";
+            slots.forEach((time, slotIndex)=>{
+                html += `<tr><th>${time}</th>`;
+                days.forEach(day=>{
+                    const safeDay = day.replace(/'/g, "\'");
+                    const entries = classData.filter(e=>e.day===day && e.slot_index===slotIndex);
+                    if(!entries.length){
+                        html += `<td class="free-cell" ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},null)">Free</td>`;
+                    } else {
+                        html += `<td ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},'${encodeURIComponent(JSON.stringify(entries[0]))}')">${entries.map(entry=>`
+                            <div class="entry">
+                                <b>${entry.subject}</b> ${entry.is_lab ? "<span class='badge text-bg-info'>Lab</span>" : "<span class='badge text-bg-light'>Theory</span>"}
+                                <div>${entry.faculty || '—'}</div>
+                                <small>${entry.room || '—'}${entry.batch_name ? " | Batch " + entry.batch_name : ""} ${entry.locked ? "| Locked" : ""}</small>
+                            </div>
+                        `).join("")}</td>`;
+                    }
+                });
+                html += "</tr>";
+            });
+            html += "</table></div></div>";
+        });
+        gridEl.innerHTML = html;
+    })
+    .catch(err=>{
+        gridEl.innerHTML = `<div class="card-box text-danger">Unable to load timetable: ${esc(err.message || err)}</div>`;
+    });
 }
-let html = "";
-classes.forEach(cls=>{
-const classData = data.filter(x=>x.class_name===cls);
-const safeCls = cls.replace(/'/g, "\\'");
-html += `<div class="card-box mb-3"><h5 class="mb-3">${cls}</h5>`;
-html+="<div class='table-responsive'><table class='table table-bordered align-middle'>";
-html+="<tr><th style='width:130px'>Time / Day</th>"+days.map(d=>`<th>${d}</th>`).join("")+"</tr>";
 
-slots.forEach((time, slotIndex)=>{
-html+=`<tr><th>${time}</th>`;
-
-days.forEach(day=>{
-let safeDay = day.replace(/'/g, "\\'");
-let entries = classData.filter(e=>e.day===day && e.slot_index===slotIndex);
-if(!entries.length){
-    html += `<td class="free-cell" ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},null)">Free</td>`;
-} else {
-    html += `<td ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},'${encodeURIComponent(JSON.stringify(entries[0]))}')">${entries.map(entry=>`
-      <div class="entry">
-        <b>${entry.subject}</b> ${entry.is_lab ? "<span class='badge text-bg-info'>Lab</span>" : ""}
-        <div>${entry.faculty}</div>
-        <small>${entry.room}${entry.batch_name ? " | Batch " + entry.batch_name : ""} ${entry.locked ? "| Locked" : ""}</small>
-      </div>
-    `).join("")}</td>`;
+function loadVersions(){
+    fetch('/get_timetable_versions?year=' + currentYear()).then(r=>r.json()).then(data=>{
+        const box = document.getElementById('versionsBox');
+        box.innerHTML = data.map(v=>`
+            <div class="version-item">
+                <div class="fw-semibold">${esc(v.label)}</div>
+                <div class="small text-secondary">${v.created_at} | Scope: ${v.scope_year ? 'Y' + v.scope_year : 'All years'} | Rows: ${v.entry_count}</div>
+                ${v.note ? `<div class="small mt-1">${esc(v.note)}</div>` : ''}
+                <div class="mt-2 d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-danger" onclick="rollbackVersion(${v.id})">Rollback</button>
+                </div>
+            </div>
+        `).join('') || `<div class="muted">No saved versions yet.</div>`;
+    });
 }
-});
-
-html+="</tr>";
-});
-
-html+="</table></div></div>";
-});
-grid.innerHTML=html;
-});
+async function saveSnapshot(){
+    const label = prompt('Snapshot name:', `Manual snapshot Y${currentYear()}`);
+    if(label === null) return;
+    const note = prompt('Optional note:', '') || '';
+    const res = await fetch('/save_timetable_version', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({year: parseInt(currentYear()), label: label.trim(), note})});
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || data.status === 'error'){ alert(data.message || data.error || 'Unable to save snapshot'); return; }
+    loadVersions();
+    alert('Snapshot saved.');
+}
+async function rollbackVersion(versionId){
+    if(!confirm('Restore this version for the selected year? A backup of the current timetable will be saved first.')) return;
+    const res = await fetch('/rollback_timetable_version', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({version_id: versionId, current_year: parseInt(currentYear())})});
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || data.status === 'error'){ alert(data.message || data.error || 'Rollback failed'); return; }
+    alert(`Rolled back to ${data.version.label}.`);
+    loadAllForYear();
 }
 
-function downloadCSV(){
-const year = yearSelect.value || "1";
-window.location='/export_csv?year=' + year;
-}
+function downloadCSV(){ window.location='/export_csv?year=' + currentYear(); }
 function downloadXLSX(){ window.location='/export_xlsx'; }
-function downloadPDF(){
-const year = yearSelect.value || "1";
-window.location='/export_pdf?year=' + year;
-}
+function downloadPDF(){ window.location='/export_pdf?year=' + currentYear(); }
 
 function toggleLock(className, day, slotIndex){
-const year = yearSelect.value || "1";
-fetch('/toggle_lock',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({year: parseInt(year), class_name: className, day: day, slot_index: slotIndex})
-}).then(()=>loadTable());
+    fetch('/toggle_lock', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({year: parseInt(currentYear()), class_name: className, day, slot_index: slotIndex})
+    }).then(async r=>{
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok || data.status === 'error') throw new Error(data.message || data.error || 'Unable to update slot');
+        loadAllForYear();
+    }).catch(err=>alert(err.message || err));
 }
 
 function editSlot(className, day, slotIndex, entryEncoded){
-const entry = entryEncoded ? JSON.parse(decodeURIComponent(entryEncoded)) : null;
-const subject = prompt("Subject (leave blank to clear slot):", entry?.subject || "");
-if(subject === null) return;
-if(subject === ""){
-    saveManual(className, day, slotIndex, {subject:""});
-    return;
+    const entry = entryEncoded ? JSON.parse(decodeURIComponent(entryEncoded)) : null;
+    const subject = prompt('Subject (leave blank to clear slot):', entry?.subject || '');
+    if(subject === null) return;
+    if(subject.trim() === ''){
+        saveManual(className, day, slotIndex, {subject:'', batch_name: entry?.batch_name || '', is_lab: !!entry?.is_lab});
+        return;
+    }
+    const faculty = prompt('Faculty (required):', entry?.faculty || '');
+    if(faculty === null || !faculty.trim()) { alert('Faculty is required.'); return; }
+    const room = prompt('Room (required):', entry?.room || '');
+    if(room === null || !room.trim()) { alert('Room is required.'); return; }
+    const isLab = confirm('Is this a lab slot?');
+    let batch = entry?.batch_name || '';
+    if(isLab){
+        batch = prompt('Batch name (required for labs):', batch);
+        if(batch === null || !batch.trim()) { alert('Batch name is required for labs.'); return; }
+    }
+    saveManual(className, day, slotIndex, {subject: subject.trim(), faculty: faculty.trim(), room: room.trim(), batch_name: (batch || '').trim(), is_lab: isLab});
 }
-const faculty = prompt("Faculty:", entry?.faculty || "");
-if(faculty === null) return;
-const room = prompt("Room:", entry?.room || "");
-if(room === null) return;
-const batch = prompt("Batch name (optional):", entry?.batch_name || "");
-if(batch === null) return;
-const isLab = confirm("Is this a lab slot?");
-saveManual(className, day, slotIndex, {subject, faculty, room, batch_name: batch, is_lab: isLab});
-}
-
 function saveManual(className, day, slotIndex, payload){
-const year = yearSelect.value || "1";
-fetch('/manual_edit_slot',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({...payload, year: parseInt(year), class_name: className, day, slot_index: slotIndex})
-}).then(()=>loadTable());
+    fetch('/manual_edit_slot', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({...payload, year: parseInt(currentYear()), class_name: className, day, slot_index: slotIndex})
+    }).then(async r=>{
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok || data.status === 'error') throw new Error(data.message || data.error || 'Unable to update slot');
+        loadAllForYear();
+    }).catch(err=>alert(err.message || err));
 }
 
 function regenUnlocked(){
-const year = yearSelect.value || "1";
-fetch('/regenerate_unlocked',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({year: parseInt(year)})
-}).then(r=>r.json()).then(data=>{
-alert(`${data.message}. Placed: ${data.placed_count || 0}, Unplaced: ${(data.unplaced || []).length}`);
-loadTable();
-});
+    fetch('/regenerate_unlocked', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({year: parseInt(currentYear())})
+    }).then(r=>r.json()).then(data=>{
+        if(data.error || data.message === undefined){ alert(data.message || data.error || 'Unable to regenerate'); return; }
+        alert(`${data.message}. Placed: ${data.placed_count || 0}, Unplaced: ${(data.unplaced || []).length}`);
+        loadAllForYear();
+    });
 }
 
 function loadReports(){
-fetch('/reports').then(r=>r.json()).then(data=>{
-reportBox.innerHTML = `
-<div><b>Total:</b> ${data.total_entries}, <b>Locked:</b> ${data.locked_entries}, <b>Manual:</b> ${data.manual_entries}</div>
-<div><b>By Year:</b> ${data.by_year.map(x=>`Y${x.year}:${x.entries}`).join(", ")}</div>
-<div><b>Validation Issues:</b> ${data.validation_issues.length}</div>`;
-});
+    fetch('/reports').then(r=>r.json()).then(data=>{
+        reportBoxEl.innerHTML = `
+            <div><b>Total:</b> ${data.total_entries}, <b>Locked:</b> ${data.locked_entries}, <b>Manual:</b> ${data.manual_entries}</div>
+            <div><b>By Year:</b> ${data.by_year.map(x=>`Y${x.year}:${x.entries}`).join(', ')}</div>
+            <div><b>Validation Issues:</b> ${data.validation_issues.length}</div>`;
+    });
 }
 
-function importTimetableFromFile(){
-const inp = document.getElementById("timetableImportFile");
-if(!inp.files || !inp.files[0]) return;
-const fd = new FormData();
-fd.append("file", inp.files[0]);
-fd.append("year", yearSelect.value || "1");
-const dc = (document.getElementById("defaultClassImport").value || "").trim();
-if(dc) fd.append("default_class_name", dc);
-fetch("/import_timetable_file", { method: "POST", body: fd })
-.then(async r=>{
-let data = {};
-try { data = await r.json(); } catch (_) {}
-return { ok: r.ok, data };
-})
-.then(({ ok, data })=>{
-inp.value = "";
-if(!ok || data.error){
-    alert("Import failed: " + (data.error || "Unknown error"));
-    return;
+function clearImportPreview(){
+    importPreviewEntries = [];
+    document.getElementById('importPreviewBox').classList.add('d-none');
+    document.getElementById('importPreviewMeta').textContent = '';
+    document.getElementById('importPreviewTable').innerHTML = '';
+    const inp = document.getElementById('timetableImportFile');
+    if(inp) inp.value = '';
 }
-let msg = `Imported ${data.inserted} row(s) into ${data.unique_slots || 0} unique class/day/slot cell(s). Model returned ${data.extracted_count || 0} entries; skipped/invalid: ${data.skipped_parse || 0}.`;
-if(data.warnings && data.warnings.length){
-    msg += "\n\n" + data.warnings.join("\n");
+function renderImportPreview(){
+    const box = document.getElementById('importPreviewBox');
+    const table = document.getElementById('importPreviewTable');
+    const meta = document.getElementById('importPreviewMeta');
+    if(!importPreviewEntries.length){
+        clearImportPreview();
+        return;
+    }
+    box.classList.remove('d-none');
+    meta.textContent = `${importPreviewEntries.length} editable row(s) ready for import into Year ${currentYear()}.`;
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>#</th><th>Class</th><th>Day</th><th>Slot</th><th>Subject</th><th>Faculty</th><th>Room</th><th>Batch</th><th>Type</th><th>Initial validation</th><th></th>
+            </tr>
+        </thead>
+        <tbody>
+            ${importPreviewEntries.map((row, idx)=>`
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td><input class="form-control form-control-sm" data-field="class_name" data-idx="${idx}" value="${esc(row.class_name || '')}"></td>
+                    <td>
+                        <select class="form-select form-select-sm" data-field="day" data-idx="${idx}">
+                            ${days.map(d=>`<option value="${d}" ${row.day===d?'selected':''}>${d}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm" data-field="slot_index" data-idx="${idx}">
+                            ${slots.map((s,i)=>`<option value="${i}" ${parseInt(row.slot_index)===i?'selected':''}>${i+1} · ${s}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td><input class="form-control form-control-sm" data-field="subject" data-idx="${idx}" value="${esc(row.subject || '')}"></td>
+                    <td><input class="form-control form-control-sm" data-field="faculty" data-idx="${idx}" value="${esc(row.faculty || '')}"></td>
+                    <td><input class="form-control form-control-sm" data-field="room" data-idx="${idx}" value="${esc(row.room || '')}"></td>
+                    <td><input class="form-control form-control-sm" data-field="batch_name" data-idx="${idx}" value="${esc(row.batch_name || '')}"></td>
+                    <td>
+                        <select class="form-select form-select-sm" data-field="is_lab" data-idx="${idx}">
+                            <option value="false" ${row.is_lab ? '' : 'selected'}>Theory</option>
+                            <option value="true" ${row.is_lab ? 'selected' : ''}>Lab</option>
+                        </select>
+                    </td>
+                    <td class="text-danger">${esc((row.validation_issues || []).join('; ') || 'OK')}</td>
+                    <td><button class="btn btn-sm btn-outline-danger" onclick="deletePreviewRow(${idx})">Delete</button></td>
+                </tr>
+            `).join('')}
+        </tbody>`;
 }
-alert(msg);
-loadTable();
-})
-.catch(()=>{
-inp.value = "";
-alert("Import request failed.");
-});
+function deletePreviewRow(idx){ importPreviewEntries.splice(idx, 1); renderImportPreview(); }
+function collectPreviewRows(){
+    const rows = JSON.parse(JSON.stringify(importPreviewEntries));
+    document.querySelectorAll('#importPreviewTable [data-field]').forEach(el=>{
+        const idx = parseInt(el.dataset.idx);
+        let value = el.value;
+        if(el.dataset.field === 'slot_index') value = parseInt(value);
+        if(el.dataset.field === 'is_lab') value = value === 'true';
+        rows[idx][el.dataset.field] = value;
+    });
+    return rows;
+}
+function previewImportFromFile(){
+    const inp = document.getElementById('timetableImportFile');
+    if(!inp.files || !inp.files[0]) return;
+    const fd = new FormData();
+    fd.append('file', inp.files[0]);
+    fd.append('year', currentYear());
+    const dc = (document.getElementById('defaultClassImport').value || '').trim();
+    if(dc) fd.append('default_class_name', dc);
+    fetch('/preview_timetable_import', {method:'POST', body: fd})
+        .then(async r=>{
+            const data = await r.json().catch(()=>({}));
+            if(!r.ok || data.error) throw new Error(data.error || 'Preview failed');
+            importPreviewEntries = data.preview_entries || [];
+            renderImportPreview();
+            let msg = `Preview ready. Extracted ${data.extracted_count || 0} row(s); invalid during parse: ${data.skipped_parse || 0}.`;
+            if(data.warnings && data.warnings.length) msg += `\n\n${data.warnings.join('\n')}`;
+            alert(msg);
+        })
+        .catch(err=>{ inp.value = ''; alert(err.message || err); });
+}
+function applyImportPreview(){
+    const rows = collectPreviewRows();
+    if(!rows.length){ alert('No preview rows to apply.'); return; }
+    fetch('/apply_timetable_import', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({year: parseInt(currentYear()), entries: rows})
+    }).then(async r=>{
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok || data.error) throw new Error((data.error || 'Import failed') + (data.warnings && data.warnings.length ? `\n\n${data.warnings.join('\n')}` : ''));
+        let msg = `Imported ${data.inserted} row(s) into ${data.unique_slots || 0} unique slot(s).`;
+        if(data.warnings && data.warnings.length) msg += `\n\n${data.warnings.join('\n')}`;
+        alert(msg);
+        clearImportPreview();
+        loadAllForYear();
+    }).catch(err=>alert(err.message || err));
 }
 
 function appendAIMessage(role, text){
-const chat = document.getElementById("aiChat");
-const div = document.createElement("div");
-div.className = "ai-msg " + (role === "user" ? "ai-msg-user" : "ai-msg-assistant");
-div.textContent = text;
-chat.appendChild(div);
-chat.scrollTop = chat.scrollHeight;
+    const chat = document.getElementById('aiChat');
+    const div = document.createElement('div');
+    div.className = 'ai-msg ' + (role === 'user' ? 'ai-msg-user' : 'ai-msg-assistant');
+    div.textContent = text;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
 }
-
-function clearAIChat(){
-document.getElementById("aiChat").innerHTML = `<div class="ai-msg ai-msg-assistant">Chat cleared. Ask a new timetable improvement question.</div>`;
+function clearAIChat(){ document.getElementById('aiChat').innerHTML = `<div class="ai-msg ai-msg-assistant">Chat cleared. Ask a new timetable question.</div>`; }
+function askQuickImprovements(){ aiQuestionEl.value = 'Give top 5 improvement suggestions for this year\'s timetable and mention expected impact.'; askAI(); }
+function askDirectNLP(){
+    const question = (aiQuestionEl.value || '').trim();
+    if(!question){ alert('Please type a question first.'); return; }
+    appendAIMessage('user', `Year ${currentYear()}: ${question}`);
+    aiQuestionEl.value = '';
+    fetch('/nlp_query', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({year: parseInt(currentYear()), question})
+    }).then(r=>r.json()).then(data=>{
+        if(data.error){ appendAIMessage('assistant', 'Error: ' + data.error); return; }
+        appendAIMessage('assistant', data.answer || 'No answer found.');
+    }).catch(()=>appendAIMessage('assistant', 'Failed to reach the NLP query endpoint.'));
 }
-
-function askQuickImprovements(){
-aiQuestion.value = "Give top 5 improvement suggestions for this year's timetable and mention expected impact.";
-askAI();
+function loadSummaryToChat(){
+    fetch('/nlp_summary?year=' + currentYear()).then(r=>r.json()).then(data=>appendAIMessage('assistant', data.text || 'No summary available.')).catch(()=>appendAIMessage('assistant', 'Failed to load summary.'));
 }
-
+function loadConflictsToChat(){
+    fetch('/nlp_conflicts?year=' + currentYear()).then(r=>r.json()).then(data=>appendAIMessage('assistant', data.text || 'No conflict explanation available.')).catch(()=>appendAIMessage('assistant', 'Failed to load conflict explanation.'));
+}
+function loadRules(){
+    fetch('/get_scheduler_rules?year=' + currentYear()).then(r=>r.json()).then(data=>{
+        const box = document.getElementById('rulesBox');
+        box.innerHTML = data.map(rule=>`
+            <div class="version-item">
+                <div class="fw-semibold">${esc(rule.summary || rule.text)}</div>
+                <div class="small text-secondary">${esc(rule.text || '')}</div>
+                <div class="small mt-1">Scope: ${rule.scope_year ? 'Y' + rule.scope_year : 'All years'}</div>
+                <div class="mt-2"><button class="btn btn-sm btn-outline-danger" onclick="deleteRule(${rule.id})">Delete</button></div>
+            </div>
+        `).join('') || `<div class="muted">No natural-language rules saved for this scope.</div>`;
+    });
+}
+function saveRule(){
+    const text = (document.getElementById('ruleText').value || '').trim();
+    if(!text){ alert('Please type a rule first.'); return; }
+    fetch('/add_scheduler_rule', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({year: parseInt(currentYear()), text})
+    }).then(async r=>{
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok || data.status === 'error') throw new Error(data.message || data.error || 'Unable to save rule');
+        document.getElementById('ruleText').value = '';
+        loadRules();
+        appendAIMessage('assistant', `Saved rule: ${data.rule?.summary || text}`);
+    }).catch(err=>alert(err.message || err));
+}
+function deleteRule(id){
+    fetch('/delete_scheduler_rule', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id})
+    }).then(async r=>{
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok || data.status === 'error') throw new Error(data.message || data.error || 'Unable to delete rule');
+        loadRules();
+    }).catch(err=>alert(err.message || err));
+}
 function askAI(){
-const question = (aiQuestion.value || "").trim();
-if(!question){
-    alert("Please type a question for the AI assistant.");
-    return;
-}
-const year = yearSelect.value || "1";
-appendAIMessage("user", `Year ${year}: ${question}`);
-aiQuestion.value = "";
-appendAIMessage("assistant", "Analyzing timetable...");
-fetch('/ai_assistant',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({year: parseInt(year), question})
-}).then(r=>r.json()).then(data=>{
-    const chat = document.getElementById("aiChat");
-    const loading = chat.querySelector(".ai-msg:last-child");
-    if(loading && loading.textContent === "Analyzing timetable..."){
-        loading.remove();
-    }
-    if(data.error){
-        appendAIMessage("assistant", "Error: " + data.error);
-        return;
-    }
-    appendAIMessage("assistant", data.answer || "No response from AI.");
-}).catch(()=>{
-    const chat = document.getElementById("aiChat");
-    const loading = chat.querySelector(".ai-msg:last-child");
-    if(loading && loading.textContent === "Analyzing timetable..."){
-        loading.remove();
-    }
-    appendAIMessage("assistant", "Failed to reach AI assistant endpoint.");
-});
+    const question = (aiQuestionEl.value || '').trim();
+    if(!question){ alert('Please type a question for the AI assistant.'); return; }
+    appendAIMessage('user', `Year ${currentYear()}: ${question}`);
+    aiQuestionEl.value = '';
+    appendAIMessage('assistant', 'Analyzing timetable...');
+    fetch('/ai_assistant', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({year: parseInt(currentYear()), question})
+    }).then(r=>r.json()).then(data=>{
+        const chat = document.getElementById('aiChat');
+        const loading = chat.querySelector('.ai-msg:last-child');
+        if(loading && loading.textContent === 'Analyzing timetable...') loading.remove();
+        if(data.error){ appendAIMessage('assistant', 'Error: ' + data.error); return; }
+        appendAIMessage('assistant', data.answer || 'No response from AI.');
+    }).catch(()=>{
+        const chat = document.getElementById('aiChat');
+        const loading = chat.querySelector('.ai-msg:last-child');
+        if(loading && loading.textContent === 'Analyzing timetable...') loading.remove();
+        appendAIMessage('assistant', 'Failed to reach AI assistant endpoint.');
+    });
 }
 
+yearSelectEl?.addEventListener("change", loadAllForYear);
 loadYears();
 </script>
-
 {% endblock %}

@@ -11,15 +11,21 @@ A Flask-based timetable generation system with year-wise scheduling, batch-wise 
   - lab room capacities
   - continuous slot duration
 - Faculty-year assignment constraints
+- Faculty unavailability constraints and validation
 - Conflict validation engine for:
   - class conflicts
   - faculty conflicts
   - room conflicts
   - batch conflicts
   - lab capacity issues
+  - theory classroom capacity issues
+  - faculty scheduled during unavailable slots
   - unassigned requirement detection
 - Manual timetable slot editing
+- CRUD management for classes, batches, faculty, subjects, and rooms
 - Slot lock/unlock support
+- AI timetable import preview and correction before apply
+- Timetable version history with rollback snapshots
 - Partial regeneration of only unlocked entries
 - Exports:
   - CSV
@@ -70,14 +76,16 @@ Open: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 ## Typical Workflow
 
 1. Add classes/divisions and batches
-2. Add faculty and allowed years
+2. Add faculty, allowed years, and unavailable slots
 3. Add subjects with year, weekly sessions, and continuous slots
 4. Add rooms (especially lab capacities)
 5. Generate timetable
 6. Validate conflicts
-7. Use manual edits/locking where needed
-8. Regenerate unlocked slots if required
-9. Export CSV/XLSX/PDF or print
+7. Preview or correct AI-imported timetable rows if needed
+8. Use manual edits/locking where needed
+9. Save a snapshot before major changes or roll back from version history
+10. Regenerate unlocked slots if required
+11. Export CSV/XLSX/PDF or print
 
 ## Key Endpoints
 
@@ -87,10 +95,15 @@ Open: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 - `GET /validate`
 - `GET /ai_suggestions?year=<n>` (uses OpenAI/Gemini API key if configured)
 - `POST /ai_assistant` (question-based AI assistant for timetable improvements)
-- `POST /import_timetable_file` (multipart: `file`, form `year`, optional `default_class_name`) — PDF or image timetable extraction via vision API
+- `POST /preview_timetable_import` (multipart: `file`, form `year`, optional `default_class_name`) — extract and preview editable rows from a PDF/image
+- `POST /apply_timetable_import` — apply the corrected preview rows to the selected year
+- `POST /import_timetable_file` (legacy direct import)
 - `GET /get_timetable?year=<1|2|3|4>`
 - `POST /manual_edit_slot`
 - `POST /toggle_lock`
+- `POST /save_timetable_version`
+- `GET /get_timetable_versions?year=<n>`
+- `POST /rollback_timetable_version`
 - `GET /reports`
 - `GET /export_csv?year=<n>`
 - `GET /export_xlsx`

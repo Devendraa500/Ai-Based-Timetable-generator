@@ -1,60 +1,171 @@
 {% extends "base.html" %}
 {% block content %}
 <h3 class="mb-1">Faculty Management</h3>
-<div class="muted mb-3">Restrict faculty to specific years and workload limits.</div>
+<div class="muted mb-3">Configure allowed years, workload limits, and unavailable slots used by the scheduler.</div>
 
-<div class="card-box">
-    <input id="name" class="form-control mb-2" placeholder="Faculty name">
-    <input id="dept" class="form-control mb-2" placeholder="Department">
-    <input id="subjects" class="form-control mb-2" placeholder="Subjects handled (comma separated)">
+<div class="card-box mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Faculty Profile</h5>
+        <span id="facultyModeBadge" class="badge text-bg-primary">New</span>
+    </div>
+    <input type="hidden" id="faculty_edit_id">
     <div class="row g-2 mb-2">
-        <div class="col-md-6"><input id="max_day" type="number" class="form-control" value="4" placeholder="Max slots/day"></div>
-        <div class="col-md-6"><input id="max_week" type="number" class="form-control" value="20" placeholder="Max slots/week"></div>
+        <div class="col-md-6"><input id="name" class="form-control" placeholder="Faculty name"></div>
+        <div class="col-md-6"><input id="dept" class="form-control" placeholder="Department"></div>
     </div>
-    <label class="form-label">Allowed years</label>
+    <input id="subjects" class="form-control mb-2" placeholder="Handled subjects, comma separated">
+    <div class="row g-2 mb-3">
+        <div class="col-md-6"><input id="max_day" type="number" min="1" max="6" class="form-control" value="4" placeholder="Max slots per day"></div>
+        <div class="col-md-6"><input id="max_week" type="number" min="1" max="30" class="form-control" value="20" placeholder="Max slots per week"></div>
+    </div>
     <div class="mb-3">
-        <label class="me-3"><input type="checkbox" class="year-check" value="1" checked> 1st</label>
-        <label class="me-3"><input type="checkbox" class="year-check" value="2" checked> 2nd</label>
-        <label class="me-3"><input type="checkbox" class="year-check" value="3" checked> 3rd</label>
-        <label class="me-3"><input type="checkbox" class="year-check" value="4" checked> 4th</label>
+        <label class="form-label fw-semibold">Allowed years</label>
+        <div>
+            <label class="me-3"><input type="checkbox" class="year-check" value="1" checked> 1st</label>
+            <label class="me-3"><input type="checkbox" class="year-check" value="2" checked> 2nd</label>
+            <label class="me-3"><input type="checkbox" class="year-check" value="3" checked> 3rd</label>
+            <label class="me-3"><input type="checkbox" class="year-check" value="4" checked> 4th</label>
+        </div>
     </div>
-    <button class="btn btn-primary" onclick="addFaculty()">Add Faculty</button>
+    <div class="mb-3">
+        <label class="form-label fw-semibold">Unavailable slots</label>
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle text-center mb-0 small">
+                <thead>
+                    <tr>
+                        <th>Day / Slot</th>
+                        {% for slot in ["09:00-10:00","10:00-11:00","11:00-12:00","13:00-14:00","14:00-15:00","15:00-16:00"] %}
+                        <th>{{ slot }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for day in ["Monday","Tuesday","Wednesday","Thursday","Friday"] %}
+                    <tr>
+                        <th>{{ day }}</th>
+                        {% for slot_idx in range(6) %}
+                        <td><input type="checkbox" class="unavailable-check" data-day="{{ day }}" data-slot="{{ slot_idx }}"></td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" onclick="saveFaculty()">Save Faculty</button>
+        <button class="btn btn-outline-secondary" onclick="resetFacultyForm()">Clear</button>
+    </div>
 </div>
 
-<div id="list" class="mt-3"></div>
+<div class="card-box">
+    <h5>Faculty List</h5>
+    <div id="list" class="mt-2"></div>
+</div>
 
 <script>
-function selectedYears(){
-    return [...document.querySelectorAll(".year-check:checked")].map(x=>parseInt(x.value));
-}
+let facultyCache = [];
+const slotLabels = ["09:00-10:00","10:00-11:00","11:00-12:00","13:00-14:00","14:00-15:00","15:00-16:00"];
 
-function addFaculty(){
-fetch('/add_faculty',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({
-name: document.getElementById("name").value,
-department: document.getElementById("dept").value,
-subjects: document.getElementById("subjects").value.split(",").map(x=>x.trim()).filter(Boolean),
-max_day: parseInt(document.getElementById("max_day").value || "4"),
-max_week: parseInt(document.getElementById("max_week").value || "20"),
-allowed_years: selectedYears(),
-unavailable:[]
-})
-}).then(()=>loadFaculty());
+function selectedYears(){ return [...document.querySelectorAll('.year-check:checked')].map(x=>parseInt(x.value)); }
+function selectedUnavailable(){
+    return [...document.querySelectorAll('.unavailable-check:checked')].map(x=>({day:x.dataset.day, slot_index: parseInt(x.dataset.slot)}));
 }
-
+function required(id, label){ const v=(document.getElementById(id).value||'').trim(); if(!v) throw new Error(label+' is required.'); return v; }
+function resetUnavailable(){ document.querySelectorAll('.unavailable-check').forEach(x=>x.checked=false); }
+function resetFacultyForm(){
+    document.getElementById('faculty_edit_id').value='';
+    document.getElementById('name').value='';
+    document.getElementById('dept').value='';
+    document.getElementById('subjects').value='';
+    document.getElementById('max_day').value='4';
+    document.getElementById('max_week').value='20';
+    document.querySelectorAll('.year-check').forEach(x=>x.checked=true);
+    resetUnavailable();
+    document.getElementById('facultyModeBadge').textContent='New';
+    document.getElementById('facultyModeBadge').className='badge text-bg-primary';
+}
+function fillUnavailable(items){
+    resetUnavailable();
+    (items || []).forEach(item=>{
+        const el = document.querySelector(`.unavailable-check[data-day="${item.day}"][data-slot="${item.slot_index}"]`);
+        if(el) el.checked = true;
+    });
+}
+async function saveFaculty(){
+    try {
+        const payload = {
+            name: required('name','Faculty name'),
+            department: required('dept','Department'),
+            subjects: (document.getElementById('subjects').value || '').split(',').map(x=>x.trim()).filter(Boolean),
+            max_day: parseInt(required('max_day','Max slots/day')),
+            max_week: parseInt(required('max_week','Max slots/week')),
+            allowed_years: selectedYears(),
+            unavailable: selectedUnavailable()
+        };
+        if(!payload.allowed_years.length) throw new Error('Select at least one allowed year.');
+        const editId = document.getElementById('faculty_edit_id').value;
+        await fetch(editId ? '/update_faculty' : '/add_faculty', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(editId ? {...payload, id: parseInt(editId)} : payload)
+        }).then(async res=>{
+            const data = await res.json().catch(()=>({}));
+            if(!res.ok || data.status === 'error') throw new Error(data.message || data.error || 'Unable to save faculty');
+        });
+        resetFacultyForm();
+        loadFaculty();
+    } catch(e){ alert(e.message || e); }
+}
+function startEditFaculty(id){
+    const f = facultyCache.find(x=>x.id===id);
+    if(!f) return;
+    document.getElementById('faculty_edit_id').value = f.id;
+    document.getElementById('name').value = f.name;
+    document.getElementById('dept').value = f.department;
+    document.getElementById('subjects').value = (f.subjects || []).join(', ');
+    document.getElementById('max_day').value = f.max_day;
+    document.getElementById('max_week').value = f.max_week;
+    document.querySelectorAll('.year-check').forEach(x=>x.checked = (f.allowed_years || []).includes(parseInt(x.value)));
+    fillUnavailable(f.unavailable || []);
+    document.getElementById('facultyModeBadge').textContent='Editing';
+    document.getElementById('facultyModeBadge').className='badge text-bg-warning';
+    window.scrollTo({top:0, behavior:'smooth'});
+}
+async function deleteFaculty(id){
+    const f = facultyCache.find(x=>x.id===id);
+    if(!f) return;
+    if(!confirm(`Delete ${f.name}? Related subject and timetable rows will also be removed.`)) return;
+    try {
+        const res = await fetch('/delete_faculty', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id})});
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok || data.status === 'error') throw new Error(data.message || data.error || 'Unable to delete faculty');
+        resetFacultyForm();
+        loadFaculty();
+    } catch(e){ alert(e.message || e); }
+}
 function loadFaculty(){
-fetch('/get_faculty')
-.then(res=>res.json())
-.then(data=>{
-list.innerHTML=data.map(f=>`
-<div class="card-box mt-2">
-<b>${f.name}</b> (${f.department})<br>
-Allowed years: ${f.allowed_years.join(", ")} | Daily max: ${f.max_day}, Weekly max: ${f.max_week}
-</div>`).join("");
-});
+    fetch('/get_faculty').then(res=>res.json()).then(data=>{
+        facultyCache = data;
+        document.getElementById('list').innerHTML = data.map(f=>`
+            <div class="border rounded-3 p-3 mb-2">
+                <div class="d-flex justify-content-between gap-2 align-items-start">
+                    <div>
+                        <div class="fw-semibold">${f.name}</div>
+                        <div class="small text-secondary">${f.department}</div>
+                        <div class="small">Allowed years: ${(f.allowed_years || []).join(', ') || '—'} | Daily max: ${f.max_day} | Weekly max: ${f.max_week}</div>
+                        <div class="small">Subjects: ${(f.subjects || []).join(', ') || '—'}</div>
+                        <div class="small">Unavailable slots: ${(f.unavailable || []).map(x=>`${x.day} ${slotLabels[x.slot_index] || ('Slot ' + (x.slot_index+1))}`).join(', ') || 'None'}</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-primary" onclick="startEditFaculty(${f.id})">Edit</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteFaculty(${f.id})">Delete</button>
+                    </div>
+                </div>
+            </div>
+        `).join('') || `<div class="muted">No faculty added yet.</div>`;
+    });
 }
+resetFacultyForm();
 loadFaculty();
 </script>
 {% endblock %}

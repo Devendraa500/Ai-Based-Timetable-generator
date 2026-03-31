@@ -4,8 +4,20 @@ import json
 import os
 import re
 
-from openai import OpenAI
-import google.generativeai as genai
+OpenAI = None
+try:
+    from openai import OpenAI  # type: ignore
+except Exception:
+    OpenAI = None
+
+genai = None
+try:
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        import google.generativeai as genai  # type: ignore
+except Exception:
+    genai = None
 
 EXTRACTION_SYSTEM = """You read timetable grids from images (and screenshots of PDF pages). Output ONLY valid JSON, no markdown fences.
 Schema: {"entries":[{"class_name":"string","day":"Monday|Tuesday|Wednesday|Thursday|Friday","slot_index":0-5,"subject":"string","faculty":"string","room":"string","batch_name":"","is_lab":false}]}
@@ -20,14 +32,12 @@ Do not include any text outside the JSON object."""
 
 
 def generate_response(prompt):
-    OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-    GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+    gemini_key = os.getenv("GEMINI_API_KEY")
 
-    # -------- OPENAI --------
-    if OPENAI_KEY:
+    if openai_key and OpenAI is not None:
         try:
-            client = OpenAI(api_key=OPENAI_KEY)
-
+            client = OpenAI(api_key=openai_key)
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -35,22 +45,18 @@ def generate_response(prompt):
                     {"role": "user", "content": prompt},
                 ],
             )
-
             return response.choices[0].message.content
+        except Exception as exc:
+            print("OpenAI Error:", exc)
 
-        except Exception as e:
-            print("OpenAI Error:", e)
-
-    # -------- GEMINI --------
-    if GEMINI_KEY:
+    if gemini_key and genai is not None:
         try:
-            genai.configure(api_key=GEMINI_KEY)
+            genai.configure(api_key=gemini_key)
             model = genai.GenerativeModel("gemini-3-flash-preview")
             res = model.generate_content(prompt)
             return res.text
-
-        except Exception as e:
-            print("Gemini Error:", e)
+        except Exception as exc:
+            print("Gemini Error:", exc)
 
     return "LLM not configured."
 
@@ -83,23 +89,17 @@ def _mime_from_upload(filename, content_type):
 
 
 def extract_timetable_openai_vision(image_chunks):
-    """image_chunks: list of (bytes, mime_type) e.g. ('image/png',)."""
-    OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-    if not OPENAI_KEY:
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
         return None, "OPENAI_API_KEY not set (required for image/PDF vision extraction with OpenAI)."
+    if OpenAI is None:
+        return None, "openai package is not installed."
 
-    client = OpenAI(api_key=OPENAI_KEY)
-    content = [
-        {"type": "text", "text": EXTRACTION_SYSTEM + "\nExtract all timetable cells from the image(s)."},
-    ]
+    client = OpenAI(api_key=openai_key)
+    content = [{"type": "text", "text": EXTRACTION_SYSTEM + "\nExtract all timetable cells from the image(s)."}]
     for raw, mime in image_chunks:
         b64 = base64.standard_b64encode(raw).decode("ascii")
-        content.append(
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:{mime};base64,{b64}"},
-            }
-        )
+        content.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
 
     try:
         response = client.chat.completions.create(
@@ -111,8 +111,8 @@ def extract_timetable_openai_vision(image_chunks):
             max_tokens=4096,
         )
         raw = response.choices[0].message.content
-    except Exception as e:
-        return None, f"OpenAI vision error: {e}"
+    except Exception as exc:
+        return None, f"OpenAI vision error: {exc}"
 
     data = _strip_json_object(raw)
     if not data or "entries" not in data:
@@ -121,18 +121,19 @@ def extract_timetable_openai_vision(image_chunks):
 
 
 def extract_timetable_gemini_vision(image_chunks):
-    GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-    if not GEMINI_KEY:
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
         return None, "GEMINI_API_KEY not set."
+    if genai is None:
+        return None, "google-generativeai package is not installed."
 
     try:
         from PIL import Image
     except ImportError:
         return None, "Pillow is required for Gemini image extraction. pip install Pillow"
 
-    genai.configure(api_key=GEMINI_KEY)
+    genai.configure(api_key=gemini_key)
     model = genai.GenerativeModel("gemini-3-flash-preview")
-
     parts = [EXTRACTION_SYSTEM + "\nExtract all timetable cells from the image(s). Output ONLY the JSON object."]
     for raw, _mime in image_chunks:
         parts.append(Image.open(io.BytesIO(raw)))
@@ -140,8 +141,8 @@ def extract_timetable_gemini_vision(image_chunks):
     try:
         res = model.generate_content(parts)
         raw = res.text
-    except Exception as e:
-        return None, f"Gemini vision error: {e}"
+    except Exception as exc:
+        return None, f"Gemini vision error: {exc}"
 
     data = _strip_json_object(raw)
     if not data or "entries" not in data:
@@ -157,8 +158,8 @@ def pdf_to_png_pages(file_bytes, max_pages=4, zoom=2.0):
 
     try:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
-    except Exception as e:
-        return None, f"Invalid PDF: {e}"
+    except Exception as exc:
+        return None, f"Invalid PDF: {exc}"
 
     out = []
     n = min(len(doc), max_pages)
@@ -174,15 +175,8 @@ def pdf_to_png_pages(file_bytes, max_pages=4, zoom=2.0):
 
 
 def extract_timetable_from_upload(file_bytes, filename, content_type):
-    """
-    Returns (data_dict_with_entries, error_message).
-    data_dict: {"entries": [...]}
-    """
     name = (filename or "").lower()
     ctype = (content_type or "").lower()
-
-    png_list = None
-    err = None
 
     if "pdf" in ctype or name.endswith(".pdf"):
         png_list, err = pdf_to_png_pages(file_bytes)
@@ -190,16 +184,12 @@ def extract_timetable_from_upload(file_bytes, filename, content_type):
             return None, err
         image_chunks = [(p, "image/png") for p in png_list]
     elif ctype.startswith("image/") or name.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
-        mime = _mime_from_upload(filename, content_type)
-        image_chunks = [(file_bytes, mime)]
+        image_chunks = [(file_bytes, _mime_from_upload(filename, content_type))]
     else:
         return None, "Unsupported file type. Use PDF, PNG, JPG, or WEBP."
 
-    # Prefer OpenAI for vision if both keys exist (matches generate_response order)
     if os.getenv("OPENAI_API_KEY"):
         return extract_timetable_openai_vision(image_chunks)
-
     if os.getenv("GEMINI_API_KEY"):
         return extract_timetable_gemini_vision(image_chunks)
-
     return None, "No API key configured. Set OPENAI_API_KEY or GEMINI_API_KEY."

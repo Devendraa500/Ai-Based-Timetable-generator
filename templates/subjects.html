@@ -1,13 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
 <h3 class="mb-1">Subject Management</h3>
-<div class="muted mb-3">Map subjects to a specific year with weekly frequency and continuous slot duration.</div>
+<div class="muted mb-3">Theory is fixed to 1 hour and labs are fixed to 2 continuous hours.</div>
 
-<div class="card-box">
-    <input id="name" class="form-control mb-2" placeholder="Subject name">
-    <input id="code" class="form-control mb-2" placeholder="Code">
+<div class="card-box mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Subject</h5>
+        <span id="subjectModeBadge" class="badge text-bg-primary">New</span>
+    </div>
+    <input type="hidden" id="subject_edit_id">
     <div class="row g-2 mb-2">
-        <div class="col-md-4">
+        <div class="col-md-6"><input id="name" class="form-control" placeholder="Subject name"></div>
+        <div class="col-md-6"><input id="code" class="form-control" placeholder="Subject code"></div>
+    </div>
+    <div class="row g-2 mb-2">
+        <div class="col-md-3">
             <select id="year" class="form-select">
                 <option value="1">1st Year</option>
                 <option value="2">2nd Year</option>
@@ -15,64 +22,125 @@
                 <option value="4">4th Year</option>
             </select>
         </div>
-        <div class="col-md-4">
-            <select id="type" class="form-select">
+        <div class="col-md-3">
+            <select id="type" class="form-select" onchange="syncDuration()">
                 <option>Theory</option>
                 <option>Lab</option>
             </select>
         </div>
-        <div class="col-md-4">
-            <select id="faculty" class="form-select"></select>
-        </div>
+        <div class="col-md-3"><input id="weekly" type="number" min="1" class="form-control" value="3" placeholder="Sessions/week"></div>
+        <div class="col-md-3"><input id="continuous_slots" type="number" class="form-control" value="1" readonly></div>
     </div>
-    <div class="row g-2 mb-2">
-        <div class="col-md-6"><input id="weekly" type="number" class="form-control" value="3" placeholder="Sessions per week"></div>
-        <div class="col-md-6"><input id="continuous_slots" type="number" class="form-control" value="1" placeholder="Continuous slots"></div>
+    <select id="faculty" class="form-select mb-2"></select>
+    <div class="small muted mb-3" id="durationHint">Theory lectures are always 1 hour.</div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-success" onclick="saveSubject()">Save Subject</button>
+        <button class="btn btn-outline-secondary" onclick="resetSubjectForm()">Clear</button>
     </div>
-    <button class="btn btn-success" onclick="addSubject()">Add Subject</button>
 </div>
 
-<div id="list" class="mt-3"></div>
+<div class="card-box">
+    <h5>Subjects</h5>
+    <div id="list" class="mt-2"></div>
+</div>
 
 <script>
+let subjectCache = [];
+let facultyList = [];
+function syncDuration(){
+    const isLab = document.getElementById('type').value === 'Lab';
+    document.getElementById('continuous_slots').value = isLab ? '2' : '1';
+    document.getElementById('durationHint').textContent = isLab ? 'Labs are fixed to 2 continuous hours.' : 'Theory lectures are always 1 hour.';
+}
+function req(id, label){ const v=(document.getElementById(id).value||'').trim(); if(!v) throw new Error(label+' is required.'); return v; }
+function resetSubjectForm(){
+    document.getElementById('subject_edit_id').value='';
+    document.getElementById('name').value='';
+    document.getElementById('code').value='';
+    document.getElementById('year').value='1';
+    document.getElementById('type').value='Theory';
+    document.getElementById('weekly').value='3';
+    syncDuration();
+    document.getElementById('faculty').value='';
+    document.getElementById('subjectModeBadge').textContent='New';
+    document.getElementById('subjectModeBadge').className='badge text-bg-primary';
+}
 function loadFaculty(){
-fetch('/get_faculty')
-.then(res=>res.json())
-.then(data=>{
-faculty.innerHTML=data.map(f=>`<option>${f.name}</option>`).join("");
-});
+    return fetch('/get_faculty').then(res=>res.json()).then(data=>{
+        facultyList = data;
+        document.getElementById('faculty').innerHTML = `<option value="">Select faculty</option>` + data.map(f=>`<option value="${f.name}">${f.name}</option>`).join('');
+    });
 }
-
-function addSubject(){
-fetch('/add_subject',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({
-name: document.getElementById("name").value,
-code: document.getElementById("code").value,
-year: parseInt(document.getElementById("year").value),
-type: document.getElementById("type").value,
-weekly: parseInt(document.getElementById("weekly").value || "1"),
-continuous_slots: parseInt(document.getElementById("continuous_slots").value || "1"),
-priority: "Medium",
-faculty: document.getElementById("faculty").value
-})
-}).then(()=>loadSubjects());
+async function saveSubject(){
+    try {
+        const payload = {
+            name: req('name','Subject name'),
+            code: req('code','Subject code'),
+            year: parseInt(req('year','Year')),
+            type: req('type','Type'),
+            weekly: parseInt(req('weekly','Sessions per week')),
+            continuous_slots: parseInt(req('continuous_slots','Continuous slots')),
+            faculty: req('faculty','Faculty'),
+            priority: 'Medium'
+        };
+        const editId = document.getElementById('subject_edit_id').value;
+        const res = await fetch(editId ? '/update_subject' : '/add_subject', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(editId ? {...payload, id: parseInt(editId)} : payload)
+        });
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok || data.status === 'error') throw new Error(data.message || data.error || 'Unable to save subject');
+        resetSubjectForm();
+        loadSubjects();
+    } catch(e){ alert(e.message || e); }
 }
-
+function startEditSubject(id){
+    const s = subjectCache.find(x=>x.id===id);
+    if(!s) return;
+    document.getElementById('subject_edit_id').value = s.id;
+    document.getElementById('name').value = s.name;
+    document.getElementById('code').value = s.code;
+    document.getElementById('year').value = s.year;
+    document.getElementById('type').value = s.type;
+    document.getElementById('weekly').value = s.weekly_sessions;
+    syncDuration();
+    document.getElementById('faculty').value = s.faculty;
+    document.getElementById('subjectModeBadge').textContent='Editing';
+    document.getElementById('subjectModeBadge').className='badge text-bg-warning';
+    window.scrollTo({top:0, behavior:'smooth'});
+}
+async function deleteSubject(id){
+    const s = subjectCache.find(x=>x.id===id);
+    if(!s) return;
+    if(!confirm(`Delete ${s.name}? Matching timetable rows for year ${s.year} will also be removed.`)) return;
+    try {
+        const res = await fetch('/delete_subject', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id})});
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok || data.status === 'error') throw new Error(data.message || data.error || 'Unable to delete subject');
+        resetSubjectForm();
+        loadSubjects();
+    } catch(e){ alert(e.message || e); }
+}
 function loadSubjects(){
-fetch('/get_subjects')
-.then(res=>res.json())
-.then(data=>{
-list.innerHTML=data.map(s=>`
-<div class="card-box mt-2">
-<b>Y${s.year} - ${s.name}</b> (${s.code}) | ${s.type}<br>
-Faculty: ${s.faculty} | Weekly: ${s.weekly_sessions} | Continuous slots: ${s.continuous_slots}
-</div>`).join("");
-});
+    fetch('/get_subjects').then(res=>res.json()).then(data=>{
+        subjectCache = data;
+        document.getElementById('list').innerHTML = data.map(s=>`
+            <div class="border rounded-3 p-3 mb-2">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div>
+                        <div class="fw-semibold">Y${s.year} - ${s.name}</div>
+                        <div class="small">${s.code} | ${s.type} | Faculty: ${s.faculty}</div>
+                        <div class="small">Weekly: ${s.weekly_sessions} | Continuous slots: ${s.continuous_slots}</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-primary" onclick="startEditSubject(${s.id})">Edit</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteSubject(${s.id})">Delete</button>
+                    </div>
+                </div>
+            </div>
+        `).join('') || `<div class="muted">No subjects added yet.</div>`;
+    });
 }
-
-loadFaculty();
-loadSubjects();
+Promise.all([loadFaculty()]).then(()=>{ resetSubjectForm(); loadSubjects(); });
 </script>
 {% endblock %}

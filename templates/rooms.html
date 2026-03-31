@@ -1,49 +1,112 @@
 {% extends "base.html" %}
 {% block content %}
 <h3 class="mb-1">Room Management</h3>
-<div class="muted mb-3">Lab room capacities are used for batch-wise lab allocation.</div>
+<div class="muted mb-3">Room capacities are now enforced for both theory classrooms and labs.</div>
 
-<div class="card-box">
-    <input id="name" class="form-control mb-2" placeholder="Room name">
+<div class="card-box mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Room</h5>
+        <span id="roomModeBadge" class="badge text-bg-primary">New</span>
+    </div>
+    <input type="hidden" id="room_edit_id">
     <div class="row g-2 mb-2">
-        <div class="col-md-6">
+        <div class="col-md-4"><input id="name" class="form-control" placeholder="Room name"></div>
+        <div class="col-md-4">
             <select id="type" class="form-select">
                 <option>Classroom</option>
                 <option>Lab</option>
             </select>
         </div>
-        <div class="col-md-6"><input id="capacity" type="number" class="form-control" value="60" placeholder="Capacity"></div>
+        <div class="col-md-4"><input id="capacity" type="number" min="1" class="form-control" value="60" placeholder="Capacity"></div>
     </div>
-    <button class="btn btn-warning" onclick="addRoom()">Add Room</button>
+    <input id="department" class="form-control mb-3" value="General" placeholder="Department">
+    <div class="d-flex gap-2">
+        <button class="btn btn-warning" onclick="saveRoom()">Save Room</button>
+        <button class="btn btn-outline-secondary" onclick="resetRoomForm()">Clear</button>
+    </div>
 </div>
 
-<div id="list" class="mt-3"></div>
+<div class="card-box">
+    <h5>Rooms</h5>
+    <div id="list" class="mt-2"></div>
+</div>
 
 <script>
-function addRoom(){
-fetch('/add_room',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({
-name: document.getElementById("name").value,
-type: document.getElementById("type").value,
-capacity: parseInt(document.getElementById("capacity").value || "60"),
-department:"General"
-})
-}).then(()=>loadRooms());
+let roomCache = [];
+function reqv(id, label){ const v=(document.getElementById(id).value||'').trim(); if(!v) throw new Error(label+' is required.'); return v; }
+function resetRoomForm(){
+    document.getElementById('room_edit_id').value='';
+    document.getElementById('name').value='';
+    document.getElementById('type').value='Classroom';
+    document.getElementById('capacity').value='60';
+    document.getElementById('department').value='General';
+    document.getElementById('roomModeBadge').textContent='New';
+    document.getElementById('roomModeBadge').className='badge text-bg-primary';
 }
-
+async function saveRoom(){
+    try {
+        const payload = {
+            name: reqv('name','Room name'),
+            type: reqv('type','Room type'),
+            capacity: parseInt(reqv('capacity','Capacity')),
+            department: reqv('department','Department')
+        };
+        const editId = document.getElementById('room_edit_id').value;
+        const res = await fetch(editId ? '/update_room' : '/add_room', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(editId ? {...payload, id: parseInt(editId)} : payload)
+        });
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok || data.status === 'error') throw new Error(data.message || data.error || 'Unable to save room');
+        resetRoomForm();
+        loadRooms();
+    } catch(e){ alert(e.message || e); }
+}
+function startEditRoom(id){
+    const r = roomCache.find(x=>x.id===id);
+    if(!r) return;
+    document.getElementById('room_edit_id').value=r.id;
+    document.getElementById('name').value=r.name;
+    document.getElementById('type').value=r.type;
+    document.getElementById('capacity').value=r.capacity;
+    document.getElementById('department').value=r.department;
+    document.getElementById('roomModeBadge').textContent='Editing';
+    document.getElementById('roomModeBadge').className='badge text-bg-warning';
+    window.scrollTo({top:0, behavior:'smooth'});
+}
+async function deleteRoom(id){
+    const r = roomCache.find(x=>x.id===id);
+    if(!r) return;
+    if(!confirm(`Delete ${r.name}? Timetable rows using this room will also be removed.`)) return;
+    try {
+        const res = await fetch('/delete_room', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id})});
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok || data.status === 'error') throw new Error(data.message || data.error || 'Unable to delete room');
+        resetRoomForm();
+        loadRooms();
+    } catch(e){ alert(e.message || e); }
+}
 function loadRooms(){
-fetch('/get_rooms')
-.then(res=>res.json())
-.then(data=>{
-list.innerHTML=data.map(r=>`
-<div class="card-box mt-2">
-<b>${r.name}</b> (${r.type})<br>
-Capacity: ${r.capacity}
-</div>`).join("");
-});
+    fetch('/get_rooms').then(res=>res.json()).then(data=>{
+        roomCache = data;
+        document.getElementById('list').innerHTML = data.map(r=>`
+            <div class="border rounded-3 p-3 mb-2">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div>
+                        <div class="fw-semibold">${r.name}</div>
+                        <div class="small">${r.type} | Capacity: ${r.capacity}</div>
+                        <div class="small text-secondary">${r.department}</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-primary" onclick="startEditRoom(${r.id})">Edit</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteRoom(${r.id})">Delete</button>
+                    </div>
+                </div>
+            </div>
+        `).join('') || `<div class="muted">No rooms added yet.</div>`;
+    });
 }
+resetRoomForm();
 loadRooms();
 </script>
 {% endblock %}
