@@ -2,6 +2,7 @@
 
 A Flask-based timetable generation system with year-wise scheduling, batch-wise lab allocation, manual edits, slot locking, validation, and exports.
 
+
 ## Features
 
 - Dynamic timetable generation
