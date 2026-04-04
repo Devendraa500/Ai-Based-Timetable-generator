@@ -2325,6 +2325,34 @@ def get_years():
     return jsonify(years)
 
 
+@app.route("/get_departments")
+@login_required
+def get_departments():
+    try:
+        departments = [r[0] for r in con.execute("SELECT DISTINCT department FROM classes WHERE department IS NOT NULL AND department != '' ORDER BY department").fetchall()]
+        return jsonify(departments)
+    except Exception as e:
+        return jsonify({"error": str(e), "departments": []}), 500
+
+
+@app.route("/debug/data")
+@login_required
+def debug_data():
+    """Debug endpoint to see database state"""
+    try:
+        classes_count = con.execute("SELECT COUNT(*) FROM classes").fetchone()[0]
+        classes_total = con.execute("SELECT * FROM classes LIMIT 5").fetchall()
+        departments_raw = con.execute("SELECT DISTINCT department FROM classes").fetchall()
+        years_raw = con.execute("SELECT DISTINCT year FROM classes").fetchall()
+        return jsonify({
+            "classes_count": classes_count,
+            "sample_classes": [dict(c.__dict__) if hasattr(c, '__dict__') else list(c) for c in classes_total],
+            "all_departments": [d[0] for d in departments_raw],
+            "all_years": sorted([y[0] for y in years_raw if y[0] is not None])
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/get_timetable_versions")
 @login_required
@@ -2563,14 +2591,21 @@ def validate():
 @login_required
 def get_timetable():
     selected_year = int(request.args.get("year", 1))
+    selected_department = (request.args.get("department") or "").strip()
+    params = [selected_year]
+    dept_filter = ""
+    if selected_department:
+        dept_filter = "AND t.class_name IN (SELECT 'Y' || year || '-' || CASE WHEN COALESCE(division, '') = '' THEN name ELSE division END FROM classes WHERE department = ?)"
+        params.append(selected_department)
+
     rows = con.execute(
-        """
-        SELECT class_name,batch_name,faculty,subject,room,day,slot_index,slot_label,is_lab,locked
-        FROM timetable
-        WHERE year=?
-        ORDER BY class_name, day, slot_index
+        f"""
+        SELECT t.class_name,t.batch_name,t.faculty,t.subject,t.room,t.day,t.slot_index,t.slot_label,t.is_lab,t.locked
+        FROM timetable t
+        WHERE t.year=? {dept_filter}
+        ORDER BY t.class_name, t.day, t.slot_index
         """,
-        [selected_year],
+        params,
     ).fetchall()
 
     return jsonify(
