@@ -16,7 +16,7 @@
         <button class="btn btn-danger" onclick="downloadPDF()">Export PDF</button>
         <button class="btn btn-dark" onclick="window.print()">Print</button>
         <input type="file" id="timetableImportFile" class="d-none" accept=".pdf,image/png,image/jpeg,image/webp,image/gif" onchange="previewImportFromFile()">
-        <button type="button" class="btn btn-outline-info" onclick="document.getElementById('timetableImportFile').click()" title="Uses OpenAI or Gemini vision (API key)">Preview Import</button>
+        <button type="button" id="previewImportTriggerBtn" class="btn btn-outline-info" onclick="document.getElementById('timetableImportFile').click()" title="Uses OpenAI or Gemini vision (API key)">Preview Import</button>
     </div>
 </div>
 
@@ -43,8 +43,8 @@
             <div class="muted small">Edit any extracted row before applying it to the selected year.</div>
         </div>
         <div class="d-flex gap-2">
-            <button class="btn btn-outline-secondary btn-sm" onclick="clearImportPreview()">Discard Preview</button>
-            <button class="btn btn-primary btn-sm" onclick="applyImportPreview()">Apply Preview</button>
+            <button id="discardImportPreviewBtn" class="btn btn-outline-secondary btn-sm" onclick="clearImportPreview()">Discard Preview</button>
+            <button id="applyImportPreviewBtn" class="btn btn-primary btn-sm" onclick="applyImportPreview()">Apply Preview</button>
         </div>
     </div>
     <div id="importPreviewMeta" class="small muted mb-2"></div>
@@ -52,6 +52,8 @@
         <table class="table table-bordered align-middle small" id="importPreviewTable"></table>
     </div>
 </div>
+
+<div id="importApplySummaryGlobal" class="small mb-3"></div>
 
 <div class="row g-3">
     <div class="col-xl-8">
@@ -93,10 +95,19 @@
     </div>
 </div>
 
+<div id="importLoadingOverlay" class="import-loading-overlay d-none" aria-live="polite" aria-busy="true">
+    <div class="import-loading-card">
+        <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+        <h5 id="importLoadingTitle" class="mb-2">Processing timetable import...</h5>
+        <div id="importLoadingSubtitle" class="muted">Please wait while we analyze the uploaded file.</div>
+    </div>
+</div>
+
 <style>
 td { padding: 8px; vertical-align: top; min-width: 180px; }
 .table td, .table th { color: #111827; }
 .free-cell { color: #6b7280; cursor: pointer; }
+.break-cell { background: #fff7ed; }
 .entry {
     background: #eef2ff;
     border: 1px solid #c7d2fe;
@@ -105,13 +116,24 @@ td { padding: 8px; vertical-align: top; min-width: 180px; }
     margin-bottom: 6px;
     color: #111827;
 }
+.entry-break {
+    background: #fff7ed;
+    border-color: #fdba74;
+}
+.entry-break .break-title {
+    color: #9a3412;
+    font-weight: 700;
+}
 .version-item { border: 1px solid var(--border); border-radius: 12px; padding: 10px; margin-bottom: 10px; }
 .version-list { max-height: 360px; overflow-y: auto; }
 body.dark .entry { background: #1f2848; border-color: #334155; color: #e5e7eb; }
+body.dark .entry-break { background: #3f1d0d; border-color: #c2410c; }
+body.dark .entry-break .break-title { color: #fdba74; }
 body.dark .table td, body.dark .table th, body.dark .table { color: #e5e7eb !important; border-color: #334155 !important; }
 body.dark .table tr th { background: #0f172a; color: #f8fafc !important; }
 body.dark .table tr td { background: #0b1220; }
 body.dark .free-cell { color: #9ca3af !important; }
+body.dark .break-cell { background: #3f1d0d !important; }
 @media print {
     button, select, #reportBox, .ai-sidebar, #importPreviewBox, #defaultClassImport { display: none !important; }
     .card-box { border: 1px solid #ddd; box-shadow: none; }
@@ -164,18 +186,95 @@ body.dark .snapshot-button-container {
 body.dark .btn-snapshot:hover {
     background: rgba(255, 255, 255, 0.1) !important;
 }
+.import-loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 1300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.import-loading-card {
+    width: min(520px, 96vw);
+    background: #ffffff;
+    border-radius: 14px;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
+    padding: 20px;
+    text-align: center;
+}
+body.dark .import-loading-card {
+    background: #111827;
+    border-color: #374151;
+}
 </style>
 
 <script>
 const days = ["Monday","Tuesday","Wednesday","Thursday","Friday"];
 const slots = ["09:00-10:00","10:00-11:00","11:00-12:00","13:00-14:00","14:00-15:00","15:00-16:00"];
 let importPreviewEntries = [];
+let importPreviewBusy = false;
+let importApplyBusy = false;
 const departmentSelectEl = document.getElementById("departmentSelect");
 const yearSelectEl = document.getElementById("yearSelect");
 const gridEl = document.getElementById("grid");
 const reportBoxEl = document.getElementById("reportBox");
 const aiQuestionEl = document.getElementById("aiQuestion");
 function esc(value){ return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function setImportButtonsDisabled(disabled){
+    const previewTrigger = document.getElementById('previewImportTriggerBtn');
+    const applyBtn = document.getElementById('applyImportPreviewBtn');
+    const discardBtn = document.getElementById('discardImportPreviewBtn');
+    const input = document.getElementById('timetableImportFile');
+    if(previewTrigger) previewTrigger.disabled = !!disabled;
+    if(applyBtn) applyBtn.disabled = !!disabled;
+    if(discardBtn) discardBtn.disabled = !!disabled;
+    if(input) input.disabled = !!disabled;
+}
+
+function showImportLoading(title, subtitle){
+    const overlay = document.getElementById('importLoadingOverlay');
+    const titleEl = document.getElementById('importLoadingTitle');
+    const subtitleEl = document.getElementById('importLoadingSubtitle');
+    if(titleEl) titleEl.textContent = title || 'Processing timetable import...';
+    if(subtitleEl) subtitleEl.textContent = subtitle || 'Please wait while we analyze the uploaded file.';
+    if(overlay) overlay.classList.remove('d-none');
+    setImportButtonsDisabled(true);
+}
+
+function hideImportLoading(){
+    const overlay = document.getElementById('importLoadingOverlay');
+    if(overlay) overlay.classList.add('d-none');
+    setImportButtonsDisabled(importPreviewBusy || importApplyBusy);
+}
+
+function renderApplySummary(summary){
+    const box = document.getElementById('importApplySummaryGlobal');
+    if(!box){ return; }
+    if(!summary || typeof summary !== 'object'){
+        box.innerHTML = '';
+        return;
+    }
+    const classes = summary.classes || {};
+    const batches = summary.batches || {};
+    const faculties = summary.faculties || {};
+    const subjects = summary.subjects || {};
+    const rooms = summary.rooms || {};
+    const tt = summary.timetable_entries || {};
+    box.innerHTML = `
+        <div class="alert alert-success py-2 mb-0">
+            <div><b>Import apply summary</b></div>
+            <div>Classes: created ${classes.created || 0}, reused ${classes.reused || 0}</div>
+            <div>Batches: created ${batches.created || 0}, reused ${batches.reused || 0}</div>
+            <div>Faculties: created ${faculties.created || 0}, reused ${faculties.reused || 0}</div>
+            <div>Subjects: created ${subjects.created || 0}, reused ${subjects.reused || 0}</div>
+            <div>Rooms/Labs: created ${rooms.created || 0}, reused ${rooms.reused || 0}</div>
+            <div>Timetable: inserted ${tt.inserted || 0}, unique slots ${tt.unique_slots || 0}, skipped locked ${tt.skipped_locked || 0}, skipped invalid ${tt.skipped_invalid || 0}</div>
+        </div>`;
+}
 
 function currentYear(){ return yearSelectEl?.value || localStorage.getItem("last_timetable_year") || "1"; }
 function currentDepartment(){ return departmentSelectEl?.value || localStorage.getItem("last_timetable_department") || ""; }
@@ -274,13 +373,23 @@ function loadTable(){
                     if(!entries.length){
                         html += `<td class="free-cell" ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},null)">Free</td>`;
                     } else {
-                        html += `<td ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},'${encodeURIComponent(JSON.stringify(entries[0]))}')">${entries.map(entry=>`
-                            <div class="entry">
-                                <b>${entry.subject}</b> ${entry.is_lab ? "<span class='badge text-bg-info'>Lab</span>" : "<span class='badge text-bg-light'>Theory</span>"}
-                                <div>${entry.faculty || '—'}</div>
-                                <small>${entry.room || '—'}${entry.batch_name ? " | Batch " + entry.batch_name : ""} ${entry.locked ? "| Locked" : ""}</small>
-                            </div>
-                        `).join("")}</td>`;
+                        const isBreakCell = entries.some(entry => entry.is_break || ['break','lunch break'].includes(String(entry.subject || '').trim().toLowerCase()));
+                        if(isBreakCell){
+                            html += `<td class="break-cell">${entries.map(entry=>`
+                                <div class="entry entry-break">
+                                    <div class="break-title">${entry.subject || 'Lunch Break'}</div>
+                                    <small>Reserved slot</small>
+                                </div>
+                            `).join("")}</td>`;
+                        } else {
+                            html += `<td ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},'${encodeURIComponent(JSON.stringify(entries[0]))}')">${entries.map(entry=>`
+                                <div class="entry">
+                                    <b>${entry.subject}</b> ${entry.is_lab ? "<span class='badge text-bg-info'>Lab</span>" : "<span class='badge text-bg-light'>Theory</span>"}
+                                    <div>${entry.faculty || '—'}</div>
+                                    <small>${entry.room || '—'}${entry.batch_name ? " | Batch " + entry.batch_name : ""} ${entry.locked ? "| Locked" : ""}</small>
+                                </div>
+                            `).join("")}</td>`;
+                        }
                     }
                 });
                 html += "</tr>";
@@ -394,10 +503,11 @@ function loadReports(){
     });
 }
 
-function clearImportPreview(){
+function clearImportPreview(preserveSummary=false){
     importPreviewEntries = [];
     document.getElementById('importPreviewBox').classList.add('d-none');
     document.getElementById('importPreviewMeta').textContent = '';
+    if(!preserveSummary) renderApplySummary(null);
     document.getElementById('importPreviewTable').innerHTML = '';
     const inp = document.getElementById('timetableImportFile');
     if(inp) inp.value = '';
@@ -464,11 +574,17 @@ function collectPreviewRows(){
 function previewImportFromFile(){
     const inp = document.getElementById('timetableImportFile');
     if(!inp.files || !inp.files[0]) return;
+    if(importPreviewBusy || importApplyBusy){ return; }
     const fd = new FormData();
     fd.append('file', inp.files[0]);
     fd.append('year', currentYear());
     const dc = (document.getElementById('defaultClassImport').value || '').trim();
     if(dc) fd.append('default_class_name', dc);
+    importPreviewBusy = true;
+    showImportLoading(
+        'Processing timetable import...',
+        'Extracting classes, batches, faculties, subjects, and rooms. Please wait while we analyze the uploaded file.'
+    );
     fetch('/preview_timetable_import', {method:'POST', body: fd})
         .then(async r=>{
             const data = await r.json().catch(()=>({}));
@@ -476,26 +592,50 @@ function previewImportFromFile(){
             importPreviewEntries = data.preview_entries || [];
             renderImportPreview();
             let msg = `Preview ready. Extracted ${data.extracted_count || 0} row(s); invalid during parse: ${data.skipped_parse || 0}.`;
+            if(data.extracted_summary){
+                msg += `\n\nExtracted classes: ${(data.extracted_summary.classes || []).length}`;
+                msg += `\nExtracted batches: ${(data.extracted_summary.batches || []).length}`;
+                msg += `\nExtracted faculties: ${(data.extracted_summary.faculties || []).length}`;
+                msg += `\nExtracted subjects: ${(data.extracted_summary.subjects || []).length}`;
+                msg += `\nExtracted rooms/labs: ${(data.extracted_summary.rooms || []).length}`;
+            }
             if(data.warnings && data.warnings.length) msg += `\n\n${data.warnings.join('\n')}`;
             alert(msg);
         })
-        .catch(err=>{ inp.value = ''; alert(err.message || err); });
+        .catch(err=>{ inp.value = ''; alert(err.message || err); })
+        .finally(()=>{
+            importPreviewBusy = false;
+            hideImportLoading();
+        });
 }
 function applyImportPreview(){
+    if(importApplyBusy || importPreviewBusy){ return; }
     const rows = collectPreviewRows();
     if(!rows.length){ alert('No preview rows to apply.'); return; }
+    importApplyBusy = true;
+    showImportLoading(
+        'Creating resources and applying timetable...',
+        'Please wait while we create missing classes, batches, faculties, subjects, rooms, and import timetable entries.'
+    );
     fetch('/apply_timetable_import', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({year: parseInt(currentYear()), entries: rows})
     }).then(async r=>{
         const data = await r.json().catch(()=>({}));
         if(!r.ok || data.error) throw new Error((data.error || 'Import failed') + (data.warnings && data.warnings.length ? `\n\n${data.warnings.join('\n')}` : ''));
+        renderApplySummary(data.summary || null);
         let msg = `Imported ${data.inserted} row(s) into ${data.unique_slots || 0} unique slot(s).`;
         if(data.warnings && data.warnings.length) msg += `\n\n${data.warnings.join('\n')}`;
         alert(msg);
-        clearImportPreview();
-        loadAllForYear();
-    }).catch(err=>alert(err.message || err));
+        clearImportPreview(true);
+        loadTable();
+        loadVersions();
+        loadRules();
+    }).catch(err=>alert(err.message || err))
+    .finally(()=>{
+        importApplyBusy = false;
+        hideImportLoading();
+    });
 }
 
 function appendAIMessage(role, text){

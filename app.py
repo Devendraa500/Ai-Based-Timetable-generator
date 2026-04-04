@@ -4,6 +4,7 @@ import os
 import json
 import csv
 import re
+import math
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -47,6 +48,9 @@ SLOTS = [
     "15:00-16:00",
 ]
 
+BREAK_LABEL = "Lunch Break"
+BREAK_DURATION_MINUTES = 60
+
 
 def _parse_slot_bounds(label):
     m = re.match(r"\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$", str(label or ""))
@@ -60,6 +64,60 @@ def _parse_slot_bounds(label):
 
 
 _SLOT_BOUNDS = [_parse_slot_bounds(label) for label in SLOTS]
+
+
+def _slot_duration_minutes(slot_index):
+    bounds = _SLOT_BOUNDS[slot_index] if 0 <= slot_index < len(_SLOT_BOUNDS) else None
+    if bounds:
+        return max(1, int(bounds[1] - bounds[0]))
+    return 60
+
+
+def _compute_break_slot_block():
+    if not SLOTS:
+        return []
+    candidates = []
+    midpoint = max(0, (len(SLOTS) - 1) / 2)
+    for start in range(len(SLOTS)):
+        total = 0
+        end = start
+        while end < len(SLOTS) and total < BREAK_DURATION_MINUTES:
+            if end > start:
+                prev_bounds = _SLOT_BOUNDS[end - 1]
+                curr_bounds = _SLOT_BOUNDS[end]
+                if prev_bounds and curr_bounds:
+                    if prev_bounds[1] != curr_bounds[0]:
+                        break
+                elif end != start + 1:
+                    break
+            total += _slot_duration_minutes(end)
+            end += 1
+        if total >= BREAK_DURATION_MINUTES:
+            block = list(range(start, end))
+            center = (start + end - 1) / 2
+            overage = total - BREAK_DURATION_MINUTES
+            candidates.append((abs(center - midpoint), overage, len(block), block))
+    if candidates:
+        candidates.sort(key=lambda item: (item[0], item[1], item[2]))
+        return candidates[0][3]
+    fallback = len(SLOTS) // 2
+    return [fallback]
+
+
+BREAK_SLOT_BLOCK = _compute_break_slot_block()
+BREAK_SLOT_SET = set(BREAK_SLOT_BLOCK)
+
+
+def _is_break_slot(slot_index):
+    return int(slot_index) in BREAK_SLOT_SET
+
+
+def _break_label_for_slot(slot_index):
+    if not _is_break_slot(slot_index):
+        return ""
+    if BREAK_SLOT_BLOCK and int(slot_index) == BREAK_SLOT_BLOCK[0]:
+        return BREAK_LABEL
+    return f"{BREAK_LABEL} (cont.)"
 
 
 def _slots_are_clock_continuous(first_slot_index, second_slot_index):
@@ -292,6 +350,12 @@ def _validate_single_timetable_entry(year, entry, class_catalog=None, room_catal
         slot_index = -1
     batch_name = _clean_text(entry.get("batch_name"))
     is_lab = _parse_bool(entry.get("is_lab", False))
+    subject_is_break = _clean_text(entry.get("subject")).lower() in {"break", "lunch break"}
+
+    if _is_break_slot(slot_index):
+        if not subject_is_break:
+            issues.append("Selected slot is reserved for Lunch Break")
+        return issues
 
     class_meta = class_catalog.get(class_name)
     if not class_meta:
@@ -512,6 +576,253 @@ def _apply_extracted_timetable(year, entries, default_class_name):
     return inserted, len(rows), skipped_parse, warnings
 
 
+def _split_imported_class_label(class_label, fallback_year):
+    label = _clean_text(class_label)
+    year = int(fallback_year)
+    division = ""
+    name = label or f"Year {year}"
+    m = re.match(r"^\s*y\s*(\d)\s*[-_\s]+(.+)$", label, flags=re.IGNORECASE)
+    if m:
+        try:
+            year = int(m.group(1))
+        except (TypeError, ValueError):
+            year = int(fallback_year)
+        division = _clean_text(m.group(2))
+        name = division or f"Year {year}"
+    else:
+        division = label
+    if not division:
+        division = name
+    return year, name, division
+
+
+def _get_or_create_class(imported_class_name, year, summary):
+    _parsed_year, name, division = _split_imported_class_label(imported_class_name, year)
+    target_year = int(year)
+    requested_display = _class_display_name_from_values(target_year, name, division)
+    requested_key = _normalized_key(requested_display)
+    rows = con.execute("SELECT id,name,year,department,division,strength FROM classes").fetchall()
+    for class_id, c_name, c_year, _dept, c_division, _strength in rows:
+        display_name = _class_display_name_from_values(c_year, c_name, c_division)
+        if _normalized_key(display_name) == requested_key:
+            summary["classes"]["reused"] += 1
+            return {
+                "id": class_id,
+                "year": int(c_year),
+                "name": c_name,
+                "division": c_division,
+                "display_name": display_name,
+            }
+
+    next_id = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM classes").fetchone()[0]
+    con.execute(
+        "INSERT INTO classes (id,name,year,department,division,strength) VALUES (?,?,?,?,?,?)",
+        [next_id, name, target_year, "Imported", division, 60],
+    )
+    summary["classes"]["created"] += 1
+    return {
+        "id": next_id,
+        "year": target_year,
+        "name": name,
+        "division": division,
+        "display_name": _class_display_name_from_values(target_year, name, division),
+    }
+
+
+def _get_or_create_batch(class_id, batch_name, is_lab, summary):
+    cleaned = _clean_text(batch_name)
+    if not cleaned and not is_lab:
+        return ""
+    normalized = cleaned or "ALL"
+    key = _normalized_key(normalized)
+    rows = con.execute("SELECT id,batch_name,size FROM batches WHERE class_id=?", [class_id]).fetchall()
+    for batch_id, existing_name, _size in rows:
+        if _normalized_key(existing_name) == key:
+            summary["batches"]["reused"] += 1
+            return existing_name
+
+    class_strength = con.execute("SELECT strength FROM classes WHERE id=?", [class_id]).fetchone()
+    size = int((class_strength[0] if class_strength else 60) or 60)
+    next_id = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM batches").fetchone()[0]
+    class_name = con.execute("SELECT name FROM classes WHERE id=?", [class_id]).fetchone()
+    con.execute(
+        "INSERT INTO batches (id,class,batch_name,size,class_id) VALUES (?,?,?,?,?)",
+        [next_id, class_name[0] if class_name else "Imported", normalized, size, class_id],
+    )
+    summary["batches"]["created"] += 1
+    return normalized
+
+
+def _get_or_create_faculty(faculty_name, year, summary):
+    cleaned = _clean_text(faculty_name) or "TBD Faculty"
+    key = _normalized_key(cleaned)
+    rows = con.execute("SELECT id,name,allowed_years FROM faculty").fetchall()
+    for faculty_id, existing_name, allowed_years_raw in rows:
+        if _normalized_key(existing_name) == key:
+            allowed_years = sorted({int(y) for y in _parse_json_array(allowed_years_raw, [1, 2, 3, 4]) if str(y).strip()})
+            if int(year) not in allowed_years:
+                allowed_years.append(int(year))
+                allowed_years = sorted(set(allowed_years))
+                con.execute("UPDATE faculty SET allowed_years=? WHERE id=?", [json.dumps(allowed_years), faculty_id])
+            summary["faculties"]["reused"] += 1
+            return existing_name
+
+    next_id = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM faculty").fetchone()[0]
+    con.execute(
+        """
+        INSERT INTO faculty (id,name,department,subjects,max_day,max_week,unavailable,allowed_years)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [next_id, cleaned, "Imported", json.dumps([]), 4, 20, json.dumps([]), json.dumps([int(year)])],
+    )
+    summary["faculties"]["created"] += 1
+    return cleaned
+
+
+def _subject_fallback_code(name):
+    letters = re.sub(r"[^A-Za-z0-9]", "", _clean_text(name).upper())[:10] or "SUBJ"
+    return f"IMP-{letters}"
+
+
+def _get_or_create_subject(subject_name, year, faculty_name, is_lab, summary):
+    cleaned = _clean_text(subject_name)
+    key = _normalized_key(cleaned)
+    rows = con.execute("SELECT id,name,year,type,faculty FROM subjects").fetchall()
+    for subject_id, existing_name, existing_year, existing_type, existing_faculty in rows:
+        if int(existing_year or 0) == int(year) and _normalized_key(existing_name) == key:
+            updates = []
+            params = []
+            if _clean_text(existing_faculty) != _clean_text(faculty_name):
+                updates.append("faculty=?")
+                params.append(faculty_name)
+            desired_type = "Lab" if is_lab else "Theory"
+            if _clean_text(existing_type) != desired_type:
+                updates.append("type=?")
+                params.append(desired_type)
+                updates.append("continuous_slots=?")
+                params.append(2 if is_lab else 1)
+                updates.append("duration=?")
+                params.append("2hr" if is_lab else "1hr")
+            if updates:
+                params.append(subject_id)
+                con.execute(f"UPDATE subjects SET {', '.join(updates)} WHERE id=?", params)
+            summary["subjects"]["reused"] += 1
+            return existing_name
+
+    next_id = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM subjects").fetchone()[0]
+    subject_type = "Lab" if is_lab else "Theory"
+    con.execute(
+        """
+        INSERT INTO subjects (id,name,code,type,weekly_lectures,lab_hours,duration,priority,faculty,year,weekly_sessions,continuous_slots)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            next_id,
+            cleaned,
+            _subject_fallback_code(cleaned),
+            subject_type,
+            1,
+            2 if is_lab else 0,
+            "2hr" if is_lab else "1hr",
+            "Medium",
+            faculty_name,
+            int(year),
+            1,
+            2 if is_lab else 1,
+        ],
+    )
+    summary["subjects"]["created"] += 1
+    return cleaned
+
+
+def _get_or_create_room(room_name, is_lab, summary):
+    cleaned = _clean_text(room_name) or ("Imported Lab" if is_lab else "Imported Classroom")
+    key = _normalized_key(cleaned)
+    rows = con.execute("SELECT id,name,type,capacity FROM rooms").fetchall()
+    for room_id, existing_name, existing_type, existing_capacity in rows:
+        if _normalized_key(existing_name) == key:
+            desired_type = _normalize_room_type(existing_name, fallback_lab=is_lab)
+            if _clean_text(existing_type) != desired_type:
+                con.execute("UPDATE rooms SET type=? WHERE id=?", [desired_type, room_id])
+            if int(existing_capacity or 0) < 1:
+                con.execute("UPDATE rooms SET capacity=? WHERE id=?", [60, room_id])
+            summary["rooms"]["reused"] += 1
+            return existing_name
+
+    next_id = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM rooms").fetchone()[0]
+    con.execute(
+        "INSERT INTO rooms (id,name,type,capacity,department) VALUES (?,?,?,?,?)",
+        [next_id, cleaned, _normalize_room_type(cleaned, fallback_lab=is_lab), 60 if not is_lab else 40, "Imported"],
+    )
+    summary["rooms"]["created"] += 1
+    return cleaned
+
+
+def _resolve_import_rows_with_resources(year, entries):
+    summary = {
+        "classes": {"created": 0, "reused": 0},
+        "batches": {"created": 0, "reused": 0},
+        "faculties": {"created": 0, "reused": 0},
+        "subjects": {"created": 0, "reused": 0},
+        "rooms": {"created": 0, "reused": 0},
+        "timetable_entries": {"inserted": 0, "unique_slots": 0, "skipped_locked": 0, "skipped_invalid": 0},
+    }
+    warnings = []
+    resolved_rows = []
+    for idx, row in enumerate(entries, start=1):
+        class_name = _clean_text(row.get("class_name"))
+        day = _normalize_day(row.get("day"))
+        try:
+            slot_index = int(row.get("slot_index"))
+        except (TypeError, ValueError):
+            slot_index = -1
+        subject = _clean_text(row.get("subject"))
+        is_lab = _parse_bool(row.get("is_lab", False))
+        if not class_name or day not in DAYS or not (0 <= slot_index < len(SLOTS)) or not subject:
+            summary["timetable_entries"]["skipped_invalid"] += 1
+            warnings.append(f"Skipped row {idx}: missing class/day/slot/subject")
+            continue
+
+        if _is_break_slot(slot_index):
+            if _normalized_key(subject) not in {"break", "lunchbreak"}:
+                summary["timetable_entries"]["skipped_invalid"] += 1
+                warnings.append(f"Skipped row {idx}: slot is reserved for {BREAK_LABEL}")
+                continue
+            resolved_rows.append(
+                {
+                    "class_name": class_name,
+                    "faculty": "",
+                    "subject": BREAK_LABEL,
+                    "room": "",
+                    "day": day,
+                    "slot_index": slot_index,
+                    "batch_name": "",
+                    "is_lab": False,
+                }
+            )
+            continue
+
+        class_ref = _get_or_create_class(class_name, year, summary)
+        batch_name = _get_or_create_batch(class_ref["id"], row.get("batch_name"), is_lab, summary)
+        faculty_name = _get_or_create_faculty(row.get("faculty"), class_ref["year"], summary)
+        subject_name = _get_or_create_subject(subject, class_ref["year"], faculty_name, is_lab, summary)
+        room_name = _get_or_create_room(row.get("room"), is_lab, summary)
+
+        resolved_rows.append(
+            {
+                "class_name": class_ref["display_name"],
+                "faculty": faculty_name,
+                "subject": subject_name,
+                "room": room_name,
+                "day": day,
+                "slot_index": slot_index,
+                "batch_name": batch_name,
+                "is_lab": is_lab,
+            }
+        )
+    return resolved_rows, summary, warnings
+
+
 def _table_columns(table_name):
     return {row[1] for row in con.execute(f"PRAGMA table_info('{table_name}')").fetchall()}
 
@@ -523,6 +834,17 @@ def _ensure_column(table_name, column_name, column_type):
 
 def _clean_text(value):
     return str(value or "").strip()
+
+
+def _normalized_key(value):
+    return re.sub(r"[^a-z0-9]+", "", _clean_text(value).lower())
+
+
+def _normalize_room_type(name, fallback_lab=False):
+    text = _clean_text(name).lower()
+    if fallback_lab or any(token in text for token in ["lab", "laboratory", "practical", "workshop"]):
+        return "Lab"
+    return "Classroom"
 
 
 def _require_text(data, key, label):
@@ -1001,6 +1323,8 @@ def _solve_with_backtracking(demands, faculty_meta, rooms, scheduler_rules=None)
         block = list(range(start, start + demands[group_indices[0]]["duration"]))
         if not _block_is_clock_continuous(block):
             return False, {}
+        if any(_is_break_slot(slot_index) for slot_index in block):
+            return False, {}
         day_name = DAYS[day_idx]
         assigned_rooms = {}
         reserved_rooms = set()
@@ -1103,6 +1427,8 @@ def _solve_with_backtracking(demands, faculty_meta, rooms, scheduler_rules=None)
                     continue
                 block = list(range(start, start + d["duration"]))
                 if not _block_is_clock_continuous(block):
+                    continue
+                if any(_is_break_slot(slot_index) for slot_index in block):
                     continue
                 if any((day_idx, s) in occupied["class_full"].get(d["class_name"], set()) for s in block):
                     continue
@@ -1296,6 +1622,18 @@ def _collect_validation_issues():
             continue
         issues.append(f"Class conflict: {class_name} at {day} slot {slot_index + 1} ({total_rows} entries)")
 
+    break_slot_conflicts = con.execute(
+        """
+        SELECT class_name, day, slot_index, subject
+        FROM timetable
+        WHERE slot_index IN ({})
+          AND LOWER(TRIM(COALESCE(subject,''))) NOT IN ('break', 'lunch break')
+        ORDER BY class_name, day, slot_index
+        """.format(",".join(str(i) for i in sorted(BREAK_SLOT_SET)) if BREAK_SLOT_SET else "-1"),
+    ).fetchall()
+    for class_name, day, slot_index, subject in break_slot_conflicts:
+        issues.append(f"Break conflict: {class_name} has '{subject}' on {day} slot {slot_index + 1}, reserved for {BREAK_LABEL}")
+
     batch_conflicts = con.execute(
         """
         SELECT class_name, batch_name, day, slot_index, COUNT(*)
@@ -1471,6 +1809,42 @@ def _collect_timetable_entries(scope_year=None):
         params,
     ).fetchall()
     return [{"year": r[0], "class_name": r[1], "batch_name": r[2], "faculty": r[3], "subject": r[4], "room": r[5], "day": r[6], "slot_index": r[7], "slot_label": r[8], "is_lab": bool(r[9])} for r in rows]
+
+
+def _with_break_rows(entries):
+    if not entries:
+        return []
+    out = [dict(item) for item in entries]
+    occupied = {(e.get("class_name"), e.get("day"), int(e.get("slot_index", -1))) for e in out}
+    class_names = sorted({e.get("class_name") for e in out if _clean_text(e.get("class_name"))})
+    year_by_class = {}
+    for item in out:
+        if _clean_text(item.get("class_name")) and item.get("year") is not None:
+            year_by_class[item.get("class_name")] = item.get("year")
+    for class_name in class_names:
+        for day in DAYS:
+            for slot_index in BREAK_SLOT_BLOCK:
+                key = (class_name, day, int(slot_index))
+                if key in occupied:
+                    continue
+                out.append(
+                    {
+                        "year": year_by_class.get(class_name),
+                        "class_name": class_name,
+                        "batch_name": "",
+                        "faculty": "",
+                        "subject": BREAK_LABEL,
+                        "room": "",
+                        "day": day,
+                        "slot_index": int(slot_index),
+                        "slot_label": SLOTS[int(slot_index)],
+                        "is_lab": False,
+                        "locked": True,
+                        "is_break": True,
+                    }
+                )
+    out.sort(key=lambda e: (e.get("class_name", ""), DAYS.index(e.get("day")) if e.get("day") in DAYS else 99, int(e.get("slot_index", 0)), e.get("batch_name") or "", e.get("subject") or ""))
+    return out
 
 
 def _format_entry(entry):
@@ -2608,24 +2982,35 @@ def get_timetable():
         params,
     ).fetchall()
 
-    return jsonify(
-        [
-            {
-                "class_name": r[0],
-                "batch_name": r[1],
-                "faculty": r[2],
-                "subject": r[3],
-                "room": r[4],
-                "day": r[5],
-                "slot_index": r[6],
-                "time": r[7],
-                "is_lab": r[8],
-                "locked": r[9],
-                "id": i + 1,
-            }
-            for i, r in enumerate(rows)
-        ]
-    )
+    entries = [
+        {
+            "class_name": r[0],
+            "batch_name": r[1],
+            "faculty": r[2],
+            "subject": r[3],
+            "room": r[4],
+            "day": r[5],
+            "slot_index": r[6],
+            "time": r[7],
+            "slot_label": r[7],
+            "is_lab": bool(r[8]),
+            "locked": bool(r[9]),
+            "is_break": _is_break_slot(int(r[6])) and _normalized_key(r[3]) in {"break", "lunchbreak"},
+        }
+        for r in rows
+    ]
+    entries = _with_break_rows(entries)
+    for idx, entry in enumerate(entries, start=1):
+        if entry.get("is_break"):
+            entry["subject"] = BREAK_LABEL
+            entry["faculty"] = ""
+            entry["room"] = ""
+            entry["batch_name"] = ""
+            entry["locked"] = True
+        entry["id"] = idx
+        if not entry.get("time"):
+            entry["time"] = SLOTS[int(entry["slot_index"])] if 0 <= int(entry["slot_index"]) < len(SLOTS) else ""
+    return jsonify(entries)
 
 
 @app.route("/export_csv")
@@ -2650,12 +3035,41 @@ def export_csv():
         params,
     ).fetchall()
 
+    entries = _with_break_rows(
+        [
+            {
+                "year": r[0],
+                "class_name": r[1],
+                "batch_name": r[2],
+                "faculty": r[3],
+                "subject": r[4],
+                "room": r[5],
+                "day": r[6],
+                "slot_label": r[7],
+                "slot_index": SLOTS.index(r[7]) if r[7] in SLOTS else 0,
+                "is_lab": bool(r[8]),
+            }
+            for r in rows
+        ]
+    )
+
     file_path = f"timetable-{file_suffix}.csv"
     with open(file_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["Year", "Class", "Batch", "Faculty", "Subject", "Room", "Day", "Time", "Type"])
-        for r in rows:
-            writer.writerow([r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], "Lab" if r[8] else "Theory"])
+        for e in entries:
+            is_break = bool(e.get("is_break"))
+            writer.writerow([
+                e.get("year"),
+                e.get("class_name"),
+                e.get("batch_name", ""),
+                "" if is_break else e.get("faculty", ""),
+                BREAK_LABEL if is_break else e.get("subject", ""),
+                "" if is_break else e.get("room", ""),
+                e.get("day", ""),
+                e.get("slot_label") or (SLOTS[int(e.get("slot_index", 0))] if 0 <= int(e.get("slot_index", 0)) < len(SLOTS) else ""),
+                "Break" if is_break else ("Lab" if e.get("is_lab") else "Theory"),
+            ])
     return send_file(file_path, as_attachment=True)
 
 
@@ -2669,12 +3083,40 @@ def export_xlsx():
     rows = con.execute(
         "SELECT year,class_name,batch_name,faculty,subject,room,day,slot_label,is_lab FROM timetable ORDER BY year,class_name,day,slot_index"
     ).fetchall()
+    entries = _with_break_rows(
+        [
+            {
+                "year": r[0],
+                "class_name": r[1],
+                "batch_name": r[2],
+                "faculty": r[3],
+                "subject": r[4],
+                "room": r[5],
+                "day": r[6],
+                "slot_label": r[7],
+                "slot_index": SLOTS.index(r[7]) if r[7] in SLOTS else 0,
+                "is_lab": bool(r[8]),
+            }
+            for r in rows
+        ]
+    )
     wb = Workbook()
     ws = wb.active
     ws.title = "Timetable"
     ws.append(["Year", "Class", "Batch", "Faculty", "Subject", "Room", "Day", "Time", "Type"])
-    for r in rows:
-        ws.append([r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], "Lab" if r[8] else "Theory"])
+    for e in entries:
+        is_break = bool(e.get("is_break"))
+        ws.append([
+            e.get("year"),
+            e.get("class_name"),
+            e.get("batch_name", ""),
+            "" if is_break else e.get("faculty", ""),
+            BREAK_LABEL if is_break else e.get("subject", ""),
+            "" if is_break else e.get("room", ""),
+            e.get("day", ""),
+            e.get("slot_label") or (SLOTS[int(e.get("slot_index", 0))] if 0 <= int(e.get("slot_index", 0)) < len(SLOTS) else ""),
+            "Break" if is_break else ("Lab" if e.get("is_lab") else "Theory"),
+        ])
     file_path = "timetable.xlsx"
     wb.save(file_path)
     return send_file(file_path, as_attachment=True)
@@ -2703,6 +3145,24 @@ def export_pdf():
     if not rows:
         return jsonify({"error": f"No timetable found for year {selected_year}"}), 404
 
+    entry_rows = _with_break_rows(
+        [
+            {
+                "year": selected_year,
+                "class_name": r[0],
+                "batch_name": r[1],
+                "faculty": r[2],
+                "subject": r[3],
+                "room": r[4],
+                "day": r[5],
+                "slot_index": int(r[6]),
+                "slot_label": r[7],
+                "is_lab": bool(r[8]),
+            }
+            for r in rows
+        ]
+    )
+
     file_path = f"timetable-year-{selected_year}.pdf"
     doc = SimpleDocTemplate(
         file_path,
@@ -2716,17 +3176,19 @@ def export_pdf():
     story = [Paragraph(f"Timetable Report - Year {selected_year}", styles["Title"]), Spacer(1, 12)]
 
     grouped = {}
-    for class_name, batch_name, faculty, subject, room, day, slot_index, slot_label, is_lab in rows:
+    for item in entry_rows:
+        class_name = item["class_name"]
         grouped.setdefault(class_name, []).append(
             {
-                "batch_name": batch_name,
-                "faculty": faculty,
-                "subject": subject,
-                "room": room,
-                "day": day,
-                "slot_index": slot_index,
-                "slot_label": slot_label,
-                "is_lab": is_lab,
+                "batch_name": item.get("batch_name", ""),
+                "faculty": item.get("faculty", ""),
+                "subject": item.get("subject", ""),
+                "room": item.get("room", ""),
+                "day": item.get("day", ""),
+                "slot_index": int(item.get("slot_index", 0)),
+                "slot_label": item.get("slot_label") or (SLOTS[int(item.get("slot_index", 0))] if 0 <= int(item.get("slot_index", 0)) < len(SLOTS) else ""),
+                "is_lab": bool(item.get("is_lab")),
+                "is_break": bool(item.get("is_break")),
             }
         )
 
@@ -2743,6 +3205,9 @@ def export_pdf():
                 else:
                     lines = []
                     for e in entries:
+                        if e.get("is_break"):
+                            lines.append(BREAK_LABEL)
+                            continue
                         label = f"{e['subject']}\n{e['faculty']}\n{e['room']}"
                         if e["batch_name"]:
                             label += f" | Batch {e['batch_name']}"
@@ -3011,12 +3476,21 @@ def preview_timetable_import():
         return jsonify({"error": "Model returned no usable entries", "hint": str(parsed)[:500]}), 400
 
     preview_rows, warnings, skipped_parse = _preview_import_entries(year, entries, default_class_name)
+    extracted_summary = {
+        "classes": sorted({_clean_text(r.get("class_name")) for r in preview_rows if _clean_text(r.get("class_name"))}),
+        "batches": sorted({_clean_text(r.get("batch_name")) for r in preview_rows if _clean_text(r.get("batch_name"))}),
+        "faculties": sorted({_clean_text(r.get("faculty")) for r in preview_rows if _clean_text(r.get("faculty"))}),
+        "subjects": sorted({_clean_text(r.get("subject")) for r in preview_rows if _clean_text(r.get("subject"))}),
+        "rooms": sorted({_clean_text(r.get("room")) for r in preview_rows if _clean_text(r.get("room"))}),
+        "labs_detected": sum(1 for r in preview_rows if _parse_bool(r.get("is_lab"))),
+    }
     return jsonify(
         {
             "preview_entries": preview_rows,
             "warnings": warnings,
             "skipped_parse": skipped_parse,
             "extracted_count": len(entries),
+            "extracted_summary": extracted_summary,
         }
     )
 
@@ -3033,60 +3507,85 @@ def apply_timetable_import():
     if not isinstance(entries, list) or not entries:
         return jsonify({"error": "No preview entries supplied"}), 400
 
-    class_catalog = _get_class_catalog()
-    room_catalog = _get_room_catalog()
-    faculty_catalog = _get_faculty_catalog()
-    valid_rows = []
-    warnings = []
-    for idx, row in enumerate(entries, start=1):
-        normalized = {
-            "class_name": _clean_text(row.get("class_name")),
-            "day": _normalize_day(row.get("day")),
-            "slot_index": int(row.get("slot_index", -1)) if str(row.get("slot_index", "")).strip() != "" else -1,
-            "subject": _clean_text(row.get("subject")),
-            "faculty": _clean_text(row.get("faculty")),
-            "room": _clean_text(row.get("room")),
-            "batch_name": _clean_text(row.get("batch_name")),
-            "is_lab": _parse_bool(row.get("is_lab", False)),
+    try:
+        con.execute("BEGIN TRANSACTION")
+        resolved_rows, summary, warnings = _resolve_import_rows_with_resources(year, entries)
+
+        class_catalog = _get_class_catalog()
+        room_catalog = _get_room_catalog()
+        faculty_catalog = _get_faculty_catalog()
+        valid_rows = []
+        for idx, row in enumerate(resolved_rows, start=1):
+            issues = _validate_single_timetable_entry(year, row, class_catalog, room_catalog, faculty_catalog)
+            if issues:
+                summary["timetable_entries"]["skipped_invalid"] += 1
+                warnings.append(f"Skipped row {idx}: {'; '.join(issues)}")
+                continue
+            valid_rows.append(row)
+
+        if not valid_rows:
+            con.execute("ROLLBACK")
+            return jsonify({"error": "No valid rows to import", "warnings": warnings, "summary": summary}), 400
+
+        by_key = {}
+        for row in valid_rows:
+            if _is_parallel_batch_lab(row.get("batch_name"), row.get("is_lab")):
+                key = (row["class_name"], row["day"], row["slot_index"], row.get("batch_name", ""))
+            else:
+                key = (row["class_name"], row["day"], row["slot_index"])
+            by_key[key] = row
+        rows = list(by_key.values())
+
+        final_rows = []
+        for row in rows:
+            if _is_parallel_batch_lab(row.get("batch_name"), row.get("is_lab")):
+                locked = con.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM timetable
+                    WHERE year=? AND class_name=? AND day=? AND slot_index=? AND locked=TRUE
+                      AND (COALESCE(batch_name,'')=? OR COALESCE(batch_name,'')='' OR UPPER(COALESCE(batch_name,''))='ALL' OR is_lab=FALSE)
+                    """,
+                    [year, row["class_name"], row["day"], row["slot_index"], row["batch_name"]],
+                ).fetchone()[0]
+            else:
+                locked = con.execute(
+                    "SELECT COUNT(*) FROM timetable WHERE year=? AND class_name=? AND day=? AND slot_index=? AND locked=TRUE",
+                    [year, row["class_name"], row["day"], row["slot_index"]],
+                ).fetchone()[0]
+            if locked:
+                summary["timetable_entries"]["skipped_locked"] += 1
+                continue
+            final_rows.append(row)
+
+        if summary["timetable_entries"]["skipped_locked"]:
+            warnings.append(f"Skipped {summary['timetable_entries']['skipped_locked']} row(s) because the target slot is locked.")
+        if not final_rows:
+            con.execute("ROLLBACK")
+            return jsonify({"error": "All edited rows were skipped due to validation/locks", "warnings": warnings, "summary": summary}), 400
+
+        _save_timetable_version(scope_year=year, label=f"Backup before AI import Y{year}", note="Automatic backup")
+        con.execute("DELETE FROM timetable WHERE locked=FALSE AND year=?", [year])
+        inserted = _insert_timetable_rows(year, final_rows, is_manual=True)
+        summary["timetable_entries"]["inserted"] = int(inserted)
+        summary["timetable_entries"]["unique_slots"] = len(final_rows)
+        con.execute("COMMIT")
+    except Exception as exc:
+        try:
+            con.execute("ROLLBACK")
+        except Exception:
+            pass
+        return jsonify({"error": f"Import apply failed: {exc}"}), 500
+
+    return jsonify(
+        {
+            "status": "ok",
+            "inserted": inserted,
+            "unique_slots": len(final_rows),
+            "warnings": warnings,
+            "summary": summary,
         }
-        issues = _validate_single_timetable_entry(year, normalized, class_catalog, room_catalog, faculty_catalog)
-        if not normalized["subject"]:
-            warnings.append(f"Skipped row {idx}: subject is required")
-            continue
-        if issues:
-            warnings.append(f"Skipped row {idx}: {'; '.join(issues)}")
-            continue
-        valid_rows.append(normalized)
-
-    if not valid_rows:
-        return jsonify({"error": "No valid rows to import", "warnings": warnings}), 400
-
-    by_key = {}
-    for row in valid_rows:
-        key = (row["class_name"], row["day"], row["slot_index"])
-        by_key[key] = row
-    rows = list(by_key.values())
-
-    locked_conflicts = 0
-    final_rows = []
-    for row in rows:
-        locked = con.execute(
-            "SELECT COUNT(*) FROM timetable WHERE year=? AND class_name=? AND day=? AND slot_index=? AND locked=TRUE",
-            [year, row["class_name"], row["day"], row["slot_index"]],
-        ).fetchone()[0]
-        if locked:
-            locked_conflicts += 1
-            continue
-        final_rows.append(row)
-    if locked_conflicts:
-        warnings.append(f"Skipped {locked_conflicts} row(s) because the target slot is locked.")
-    if not final_rows:
-        return jsonify({"error": "All edited rows conflict with locked slots", "warnings": warnings}), 400
-
-    _save_timetable_version(scope_year=year, label=f"Backup before AI import Y{year}", note="Automatic backup")
-    con.execute("DELETE FROM timetable WHERE locked=FALSE AND year=?", [year])
-    inserted = _insert_timetable_rows(year, final_rows, is_manual=True)
-    return jsonify({"status": "ok", "inserted": inserted, "unique_slots": len(final_rows), "warnings": warnings})
+    )
 
 
 @app.route("/import_timetable_file", methods=["POST"])
@@ -3150,6 +3649,8 @@ def manual_edit_slot():
         slot_index = _require_int(d, "slot_index", "Slot", 0, len(SLOTS) - 1)
     except ValueError as e:
         return jsonify({"status": "error", "message": str(e)}), 400
+    if _is_break_slot(slot_index):
+        return jsonify({"status": "error", "message": f"Slot {slot_index + 1} is reserved for {BREAK_LABEL}"}), 400
     _save_timetable_version(scope_year=year, label=f"Backup before manual edit Y{year}", note=f"{class_name} {day} slot {slot_index + 1}")
     if not _clean_text(d.get("subject")):
         if _is_parallel_batch_lab(d.get("batch_name"), d.get("is_lab")):
