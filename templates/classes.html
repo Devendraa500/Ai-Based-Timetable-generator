@@ -11,11 +11,25 @@
                 <span id="classModeBadge" class="badge text-bg-primary">New</span>
             </div>
             <input type="hidden" id="class_edit_id">
-            <input id="name" class="form-control mb-2" placeholder="Class label, e.g. CSE">
             <div class="row g-2 mb-2">
-                <div class="col-md-4"><input id="year" type="number" min="1" max="4" class="form-control" placeholder="Year"></div>
-                <div class="col-md-4"><input id="division" class="form-control" placeholder="Division"></div>
-                <div class="col-md-4"><input id="strength" type="number" min="1" class="form-control" value="60" placeholder="Strength"></div>
+                <div class="col-md-4">
+                    <label for="year" class="form-label small mb-0">Year</label>
+                    <select id="year" class="form-select">
+                        <option value="">Select year</option>
+                        <option value="1">I</option>
+                        <option value="2">II</option>
+                        <option value="3">III</option>
+                        <option value="4">IV</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="division" class="form-label small mb-0">Division</label>
+                    <input id="division" class="form-control" placeholder="Division">
+                </div>
+                <div class="col-md-4">
+                    <label for="strength" class="form-label small mb-0">Strength</label>
+                    <input id="strength" type="number" min="1" class="form-control" value="60" placeholder="Strength">
+                </div>
             </div>
             <select id="dept" class="form-select mb-3">
                 <option value="">Select Department</option>
@@ -70,6 +84,9 @@
 let classCache = [];
 let batchCache = [];
 
+const ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
+const FIXED_DEPTS = ['', 'CS', 'IT', 'ECS', 'AUTO', 'MECH'];
+
 function showError(err){ alert(err?.message || err || "Request failed."); }
 async function postJSON(url, payload){
     const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify(payload)});
@@ -85,11 +102,12 @@ function requireValue(id, label){
 }
 function resetClassForm(){
     document.getElementById('class_edit_id').value = '';
-    document.getElementById('name').value = '';
     document.getElementById('year').value = '';
     document.getElementById('division').value = '';
     document.getElementById('strength').value = '60';
-    document.getElementById('dept').value = '';
+    const deptSel = document.getElementById('dept');
+    [...deptSel.options].forEach(o => { if (!FIXED_DEPTS.includes(o.value)) o.remove(); });
+    deptSel.value = '';
     document.getElementById('classModeBadge').textContent = 'New';
     document.getElementById('classModeBadge').className = 'badge text-bg-primary';
 }
@@ -104,12 +122,13 @@ function resetBatchForm(){
 async function saveClass(){
     try {
         const payload = {
-            name: requireValue('name','Class label'),
             year: parseInt(requireValue('year','Year')),
             division: requireValue('division','Division'),
             strength: parseInt(requireValue('strength','Division strength')),
             department: requireValue('dept','Department')
         };
+        // Derive a name from dept for compatibility with backend
+        payload.name = payload.department;
         const editId = document.getElementById('class_edit_id').value;
         await postJSON(editId ? '/update_class' : '/add_class', editId ? {...payload, id: parseInt(editId)} : payload);
         resetClassForm();
@@ -129,14 +148,23 @@ async function saveBatch(){
         loadAll();
     } catch (e) { showError(e); }
 }
+function ensureClassDeptOption(value){
+    if(!value) return;
+    const sel = document.getElementById('dept');
+    if([...sel.options].some(o => o.value === value)) return;
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = value;
+    sel.appendChild(opt);
+}
 function startEditClass(id){
     const c = classCache.find(x => x.id === id);
     if(!c) return;
     document.getElementById('class_edit_id').value = c.id;
-    document.getElementById('name').value = c.name;
-    document.getElementById('year').value = c.year;
+    document.getElementById('year').value = String(c.year);
     document.getElementById('division').value = c.division;
     document.getElementById('strength').value = c.strength;
+    ensureClassDeptOption(c.department);
     document.getElementById('dept').value = c.department;
     document.getElementById('classModeBadge').textContent = 'Editing';
     document.getElementById('classModeBadge').className = 'badge text-bg-warning';
@@ -184,7 +212,7 @@ function loadClasses(){
                     <div>
                         <div class="fw-semibold">${c.display_name}</div>
                         <div class="small text-secondary">${c.department}</div>
-                        <div class="small">Strength: ${c.strength}</div>
+                        <div class="small">Year: ${ROMAN[c.year] || c.year} &nbsp;|&nbsp; Strength: ${c.strength}</div>
                     </div>
                     <div class="d-flex gap-2">
                         <button class="btn btn-sm btn-outline-primary" onclick="startEditClass(${c.id})">Edit</button>
@@ -202,7 +230,7 @@ function loadBatches(){
             <div class="border rounded-3 p-3 mb-2">
                 <div class="d-flex justify-content-between align-items-start gap-2">
                     <div>
-                        <div class="fw-semibold">Y${b.year} ${b.division || b.class_name} - ${b.batch_name}</div>
+                        <div class="fw-semibold">Y${ROMAN[b.year] || b.year} ${b.division || b.class_name} - ${b.batch_name}</div>
                         <div class="small">Size: ${b.size}</div>
                     </div>
                     <div class="d-flex gap-2">
