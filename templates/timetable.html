@@ -222,6 +222,9 @@ const yearSelectEl = document.getElementById("yearSelect");
 const gridEl = document.getElementById("grid");
 const reportBoxEl = document.getElementById("reportBox");
 const aiQuestionEl = document.getElementById("aiQuestion");
+const initialYears = {{ (initial_years or [1]) | tojson }};
+const initialDepartments = {{ (initial_departments or []) | tojson }};
+const urlParams = new URLSearchParams(window.location.search);
 function esc(value){ return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 function setImportButtonsDisabled(disabled){
@@ -276,61 +279,102 @@ function renderApplySummary(summary){
         </div>`;
 }
 
-function currentYear(){ return yearSelectEl?.value || localStorage.getItem("last_timetable_year") || "1"; }
-function currentDepartment(){ return departmentSelectEl?.value || localStorage.getItem("last_timetable_department") || ""; }
-
-function loadDepartments(){
-    console.log('Loading departments...');
-    fetch('/get_departments')
-    .then(async r=>{
-        const data = await r.json().catch(()=>[]);
-        if(!r.ok) throw new Error(data.message || data.error || 'Failed to load departments');
-        return Array.isArray(data) ? data : [];
-    })
-    .then(departments=>{
-        console.log('Departments loaded:', departments);
-        const values = departments && departments.length ? departments : [];
-        let html = `<option value="">All Departments</option>`;
-        values.forEach(d=>{
-            html += `<option value="${esc(d)}">${esc(d)}</option>`;
-        });
-        departmentSelectEl.innerHTML = html;
-        const savedDepartment = localStorage.getItem('last_timetable_department');
-        if(savedDepartment && departments && departments.includes(savedDepartment)){
-            departmentSelectEl.value = savedDepartment;
-        }
-    })
-    .catch(err=>{
-        console.warn('Unable to load departments:', err);
-        departmentSelectEl.innerHTML = `<option value="">All Departments</option>`;
-    });
+function currentYear(){
+    if(yearSelectEl && String(yearSelectEl.value || '').trim()) return String(yearSelectEl.value).trim();
+    return urlParams.get('year') || localStorage.getItem("last_timetable_year") || String(initialYears[0] || 1);
+}
+function currentDepartment(){
+    if(departmentSelectEl) return String(departmentSelectEl.value || '').trim();
+    return urlParams.get('department') || localStorage.getItem("last_timetable_department") || "";
 }
 
-function loadYears(){
-    console.log('Loading years...');
-    fetch('/get_years')
-    .then(async r=>{
-        const data = await r.json().catch(()=>[]);
-        if(!r.ok) throw new Error(data.message || data.error || 'Failed to load years');
-        return Array.isArray(data) ? data : [];
-    })
-    .then(years=>{
-        console.log('Years loaded:', years);
-        const values = years.length ? years : [1];
-        yearSelectEl.innerHTML = values.map(y=>`<option value="${y}">${y} Year</option>`).join("");
-        const savedYear = localStorage.getItem('last_timetable_year');
-        if(savedYear && values.map(String).includes(String(savedYear))){
-            yearSelectEl.value = String(savedYear);
-        }
-        loadAllForYear();
-    })
-    .catch(err=>{
-        console.error('Error loading years:', err);
-        gridEl.innerHTML = `<div class="card-box text-danger">Unable to load schedule years: ${esc(err.message || err)}</div>`;
-    });
+function pickPreferredValue(candidates, options, fallback = ""){
+    const normalizedOptions = options.map(v => String(v));
+    for(const candidate of candidates){
+        const value = String(candidate ?? '').trim();
+        if(value && normalizedOptions.includes(value)) return value;
+    }
+    return fallback;
+}
+
+function renderYearOptions(years){
+    const values = (years && years.length ? years : initialYears.length ? initialYears : [1]).map(v => String(v));
+    yearSelectEl.innerHTML = values.map(y=>`<option value="${esc(y)}">${esc(y)} Year</option>`).join("");
+    const selectedYear = pickPreferredValue(
+        [yearSelectEl.dataset.selected, urlParams.get('year'), localStorage.getItem('last_timetable_year'), values[0]],
+        values,
+        values[0] || '1'
+    );
+    yearSelectEl.value = selectedYear || String(values[0] || 1);
+    yearSelectEl.dataset.selected = yearSelectEl.value;
+    return values;
+}
+
+function renderDepartmentOptions(departments){
+    const values = (departments && departments.length ? departments : initialDepartments || []).map(v => String(v).trim()).filter(Boolean);
+    if(values.length){
+        departmentSelectEl.innerHTML = values.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('');
+        const selectedDepartment = pickPreferredValue(
+            [departmentSelectEl.dataset.selected, urlParams.get('department'), localStorage.getItem('last_timetable_department'), values[0]],
+            values,
+            values[0]
+        );
+        departmentSelectEl.value = selectedDepartment || values[0];
+        departmentSelectEl.dataset.selected = departmentSelectEl.value;
+        departmentSelectEl.disabled = false;
+    } else {
+        departmentSelectEl.innerHTML = `<option value="">No Departments</option>`;
+        departmentSelectEl.value = '';
+        departmentSelectEl.dataset.selected = '';
+        departmentSelectEl.disabled = true;
+    }
+    return values;
+}
+
+function persistSelections(){
+    const year = String(currentYear() || initialYears[0] || 1);
+    const department = String(currentDepartment() || '');
+    localStorage.setItem('last_timetable_year', year);
+    localStorage.setItem('last_timetable_department', department);
+    if(yearSelectEl) yearSelectEl.dataset.selected = year;
+    if(departmentSelectEl) departmentSelectEl.dataset.selected = department;
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('year', year);
+    if(department){
+        nextUrl.searchParams.set('department', department);
+    } else {
+        nextUrl.searchParams.delete('department');
+    }
+    window.history.replaceState({}, '', nextUrl.toString());
+}
+
+function initializeFilterOptions(){
+    renderYearOptions(initialYears);
+    renderDepartmentOptions(initialDepartments);
+    persistSelections();
+}
+
+async function refreshFilterOptions(){
+    try {
+        const [yearsRes, departmentsRes] = await Promise.all([
+            fetch('/get_years'),
+            fetch('/get_departments')
+        ]);
+        const yearsData = await yearsRes.json().catch(()=>[]);
+        const departmentsData = await departmentsRes.json().catch(()=>[]);
+        if(!yearsRes.ok) throw new Error(yearsData.message || yearsData.error || 'Failed to load years');
+        if(!departmentsRes.ok) throw new Error(departmentsData.message || departmentsData.error || 'Failed to load departments');
+        renderYearOptions(Array.isArray(yearsData) ? yearsData : []);
+        renderDepartmentOptions(Array.isArray(departmentsData) ? departmentsData : []);
+        persistSelections();
+    } catch(err){
+        console.warn('Unable to refresh filters:', err);
+        initializeFilterOptions();
+    }
 }
 
 function loadAllForYear(){
+    persistSelections();
     loadTable();
     loadVersions();
     loadRules();
@@ -340,8 +384,7 @@ function loadAllForYear(){
 function loadTable(){
     const year = currentYear();
     const department = currentDepartment();
-    localStorage.setItem('last_timetable_year', String(year));
-    localStorage.setItem('last_timetable_department', department);
+    persistSelections();
     let url = '/get_timetable?year=' + encodeURIComponent(year);
     if(department){
         url += '&department=' + encodeURIComponent(department);
@@ -727,9 +770,9 @@ function askAI(){
     });
 }
 
-yearSelectEl?.addEventListener("change", loadAllForYear);
-departmentSelectEl?.addEventListener("change", loadAllForYear);
-loadDepartments();
-loadYears();
+yearSelectEl?.addEventListener("change", ()=>{ persistSelections(); loadAllForYear(); });
+departmentSelectEl?.addEventListener("change", ()=>{ persistSelections(); loadAllForYear(); });
+initializeFilterOptions();
+refreshFilterOptions().finally(loadAllForYear);
 </script>
 {% endblock %}

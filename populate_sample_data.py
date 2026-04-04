@@ -1,9 +1,14 @@
 import duckdb
 import json
 from datetime import datetime
+from pathlib import Path
+from app import init_db
+
+BASE_DIR = Path(__file__).resolve().parent
+init_db()
 
 # Connect to database
-con = duckdb.connect('database/db.duckdb')
+con = duckdb.connect(str(BASE_DIR / 'database' / 'db.duckdb'))
 
 print("🔄 Populating database with sample data...\n")
 
@@ -56,7 +61,7 @@ faculty_data = [
     
     # Mechanical Faculty
     (7, "Dr. Harish Rao", "Mechanical", json.dumps(["Thermodynamics", "Mechanics"]), 5, 20, json.dumps([]), json.dumps([1,2,3,4])),
-    (8, "Prof. Meera Nair", "Mechanical", json.dumps(["Design", "CAD"]), 4, 16, json.dumps([]), json.dumps([2,3,4])),
+    (8, "Prof. Meera Nair", "Mechanical", json.dumps(["Design", "CAD"]), 4, 16, json.dumps([]), json.dumps([1,2,3,4])),
 ]
 
 for fac_id, name, dept, subjects, max_day, max_week, unavailable, allowed_years in faculty_data:
@@ -95,9 +100,15 @@ subjects_data = [
 ]
 
 for subj_id, name, code, subj_type, lectures, labs, duration, priority, faculty, year in subjects_data:
+    weekly_sessions = labs if subj_type == "Lab" else lectures
+    continuous_slots = 2 if subj_type == "Lab" else 1
     con.execute(
-        "INSERT INTO subjects (id, name, code, type, weekly_lectures, lab_hours, duration, priority, faculty, year) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [subj_id, name, code, subj_type, lectures, labs, duration, priority, faculty, year]
+        """
+        INSERT INTO subjects (
+            id, name, code, type, weekly_lectures, lab_hours, duration, priority, faculty, year, weekly_sessions, continuous_slots
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [subj_id, name, code, subj_type, lectures, labs, duration, priority, faculty, year, weekly_sessions, continuous_slots]
     )
 
 print(f"✅ Added {len(subjects_data)} subjects\n")
@@ -127,6 +138,20 @@ for room_id, name, room_type, capacity, dept in rooms_data:
     )
 
 print(f"✅ Added {len(rooms_data)} rooms\n")
+
+# ============ ADD BATCHES FOR LAB SCHEDULING ============
+print("🧪 Adding sample batches...")
+
+batch_id = 1
+for class_id, name, year, dept, division, strength in classes_data:
+    for batch_name in ("B1", "B2"):
+        con.execute(
+            "INSERT INTO batches (id, class, batch_name, size, class_id) VALUES (?, ?, ?, ?, ?)",
+            [batch_id, name, batch_name, strength // 2, class_id]
+        )
+        batch_id += 1
+
+print(f"✅ Added {batch_id - 1} batches\n")
 
 # ============ ADD SAMPLE TIMETABLE ENTRIES ============
 print("📅 Adding sample timetable entries...")

@@ -205,8 +205,55 @@ def _resolve_slot_index(entry):
 
 
 def _class_display_name_from_values(year, name, division):
+    name = (name or "").strip()
     division = (division or "").strip()
-    return f"Y{year}-{division}" if division else f"Y{year}-{name}"
+
+    base = name or division or f"Class-{year}"
+    if name and division:
+        normalized_name = re.sub(r"[^a-z0-9]+", "", name.lower())
+        normalized_division = re.sub(r"[^a-z0-9]+", "", division.lower())
+        if normalized_division and normalized_division not in normalized_name:
+            base = f"{name}-{division}"
+
+    return f"Y{year}-{base}"
+
+
+def _class_name_aliases_from_values(year, name, division, department=None):
+    year_text = str(year).strip()
+    year_num = int(year) if str(year).strip().isdigit() else year
+    raw_name = (name or "").strip()
+    raw_division = (division or "").strip()
+    raw_department = (department or "").strip()
+
+    aliases = set()
+
+    def _add(value):
+        value = (value or "").strip()
+        if value:
+            aliases.add(value)
+
+    display_name = _class_display_name_from_values(year_num, raw_name, raw_division)
+    _add(display_name)
+    _add(f"Y{year_text}-{raw_name}" if raw_name else "")
+    _add(f"Y{year_text}-{raw_division}" if raw_division else "")
+    if raw_department and raw_division:
+        _add(f"Y{year_text}-{raw_department}-{raw_division}")
+        _add(f"Y{year_text}-{raw_department}{raw_division}")
+    if raw_name:
+        _add(raw_name)
+    if raw_division:
+        _add(raw_division)
+    if raw_department and raw_division:
+        _add(f"{raw_department}-{raw_division}")
+        _add(f"{raw_department}{raw_division}")
+
+    normalized = set()
+    for alias in aliases:
+        normalized.add(alias)
+        normalized.add(alias.replace(" ", ""))
+        normalized.add(alias.replace(" ", "-").replace("--", "-"))
+        normalized.add(alias.replace("_", "-"))
+    return {a for a in normalized if a}
 
 
 def _parse_bool(value):
@@ -1060,6 +1107,38 @@ def _faculty_allowed_for_year(faculty_name, year, faculty_meta):
     return year in f["allowed_years"]
 
 
+def _faculty_matches_class_department(faculty_name, class_department, faculty_meta):
+    f = faculty_meta.get(faculty_name)
+    if not f:
+        return False
+    faculty_department = _clean_text(f.get("department"))
+    class_department = _clean_text(class_department)
+    if not faculty_department or not class_department:
+        return True
+    return faculty_department.lower() in {class_department.lower(), "general", "common"}
+
+
+def _eligible_faculty_for_subject(subject_name, preferred_faculty, class_year, class_department, faculty_meta):
+    preferred_faculty = _clean_text(preferred_faculty)
+    normalized_subject = _normalized_key(subject_name)
+    eligible = []
+    for faculty_name, meta in faculty_meta.items():
+        if not _faculty_allowed_for_year(faculty_name, class_year, faculty_meta):
+            continue
+        if not _faculty_matches_class_department(faculty_name, class_department, faculty_meta):
+            continue
+        taught_subjects = {_normalized_key(s) for s in meta.get("subjects", []) if _clean_text(s)}
+        if normalized_subject and normalized_subject not in taught_subjects and faculty_name != preferred_faculty:
+            continue
+        eligible.append(faculty_name)
+    if preferred_faculty and preferred_faculty in faculty_meta and preferred_faculty not in eligible:
+        if _faculty_allowed_for_year(preferred_faculty, class_year, faculty_meta) and _faculty_matches_class_department(preferred_faculty, class_department, faculty_meta):
+            eligible.insert(0, preferred_faculty)
+    if preferred_faculty and preferred_faculty in eligible:
+        eligible = [preferred_faculty] + [f for f in eligible if f != preferred_faculty]
+    return eligible
+
+
 def _pick_room(rooms, room_type, required_capacity, occupied_rooms, day_idx, slot_block):
     for r in rooms:
         if r["type"] != room_type:
@@ -1131,14 +1210,16 @@ def _build_requirements(scope_year=None):
     ]
 
     faculty_rows = con.execute(
-        "SELECT name,max_day,max_week,allowed_years,unavailable FROM faculty ORDER BY name"
+        "SELECT name,department,max_day,max_week,allowed_years,subjects,unavailable FROM faculty ORDER BY name"
     ).fetchall()
     faculty_meta = {
         r[0]: {
-            "max_day": int(r[1] or 4),
-            "max_week": int(r[2] or 20),
-            "allowed_years": _parse_json_array(r[3], [1, 2, 3, 4]),
-            "unavailable": _normalize_unavailable_slots(r[4]),
+            "department": r[1],
+            "max_day": int(r[2] or 4),
+            "max_week": int(r[3] or 20),
+            "allowed_years": _parse_json_array(r[4], [1, 2, 3, 4]),
+            "subjects": [str(x).strip() for x in _parse_json_array(r[5], []) if str(x).strip()],
+            "unavailable": _normalize_unavailable_slots(r[6]),
         }
         for r in faculty_rows
     }
@@ -1171,14 +1252,20 @@ def _build_requirements(scope_year=None):
     demands = []
     requirement_counter = {}
     for c in classes:
-        year_subjects = [s for s in subjects if s["year"] == c["year"]]
+        year_subjects = [
+            s for s in subjects
+            if s["year"] == c["year"]
+            and _faculty_matches_class_department(s["faculty"], c["department"], faculty_meta)
+        ]
         for s in year_subjects:
-            if not _faculty_allowed_for_year(s["faculty"], c["year"], faculty_meta):
+            eligible_faculty = _eligible_faculty_for_subject(s["name"], s["faculty"], c["year"], c["department"], faculty_meta)
+            if not eligible_faculty:
                 continue
+            preferred_faculty = eligible_faculty[0]
             for session_idx in range(s["weekly_sessions"]):
                 if s["type"] == "Lab":
                     class_batches = batches_by_class.get(c["id"], []) or [{"batch_name": "ALL", "size": c["strength"]}]
-                    parallel_group = f"{c['id']}::{s['name']}::{s['faculty']}::{session_idx}"
+                    parallel_group = f"{c['id']}::{s['name']}::{preferred_faculty}::{session_idx}"
                     for b in class_batches:
                         d = {
                             "year": c["year"],
@@ -1186,7 +1273,9 @@ def _build_requirements(scope_year=None):
                             "batch_name": b["batch_name"],
                             "batch_size": b["size"],
                             "subject": s["name"],
-                            "faculty": s["faculty"],
+                            "faculty": preferred_faculty,
+                            "preferred_faculty": preferred_faculty,
+                            "faculty_options": [preferred_faculty],
                             "is_lab": True,
                             "duration": 2,
                             "parallel_group": parallel_group,
@@ -1201,7 +1290,9 @@ def _build_requirements(scope_year=None):
                         "batch_name": "",
                         "batch_size": c["strength"],
                         "subject": s["name"],
-                        "faculty": s["faculty"],
+                        "faculty": preferred_faculty,
+                        "preferred_faculty": preferred_faculty,
+                        "faculty_options": eligible_faculty,
                         "is_lab": False,
                         "duration": 1,
                         "parallel_group": None,
@@ -1393,7 +1484,9 @@ def _solve_with_backtracking(demands, faculty_meta, rooms, scheduler_rules=None)
 
     def candidate_slots(d, idx=None):
         cands = []
-        if d["faculty"] not in faculty_meta:
+        faculty_options = d.get("faculty_options") or [d.get("faculty")]
+        faculty_options = [f for f in faculty_options if f in faculty_meta]
+        if not faculty_options:
             return cands
         parallel_lab = _is_parallel_batch_lab(d.get("batch_name"), d.get("is_lab"))
         parallel_group = d.get("parallel_group") if parallel_lab else None
@@ -1414,70 +1507,72 @@ def _solve_with_backtracking(demands, faculty_meta, rooms, scheduler_rules=None)
                 placements[gi] and not placements[gi].get("sync_lock")
                 for gi in group_indices
             )
-        f_lim = faculty_meta[d["faculty"]]
         strict_sync_candidates = []
         fallback_candidates = []
-        for day_idx in range(len(DAYS)):
-            if faculty_day_load[d["faculty"]][day_idx] >= f_lim["max_day"]:
-                continue
-            if faculty_week_load[d["faculty"]] >= f_lim["max_week"]:
-                continue
-            for start in range(0, len(SLOTS) - d["duration"] + 1):
-                if fixed_signature and (day_idx, start) != fixed_signature:
+        for faculty_name in faculty_options:
+            f_lim = faculty_meta[faculty_name]
+            faculty_bonus = 5 if faculty_name == d.get("preferred_faculty") else 0
+            for day_idx in range(len(DAYS)):
+                if faculty_day_load[faculty_name][day_idx] >= f_lim["max_day"]:
                     continue
-                block = list(range(start, start + d["duration"]))
-                if not _block_is_clock_continuous(block):
+                if faculty_week_load[faculty_name] >= f_lim["max_week"]:
                     continue
-                if any(_is_break_slot(slot_index) for slot_index in block):
-                    continue
-                if any((day_idx, s) in occupied["class_full"].get(d["class_name"], set()) for s in block):
-                    continue
-                if not parallel_lab and any((day_idx, s) in occupied["class_lab"].get(d["class_name"], set()) for s in block):
-                    continue
-                if d["batch_name"] and any((day_idx, s) in occupied["batch"].get((d["class_name"], d["batch_name"]), set()) for s in block):
-                    continue
-                if any((day_idx, s) in occupied["faculty"].get(d["faculty"], set()) for s in block):
-                    continue
-                day_name = DAYS[day_idx]
-                class_day_subjects = occupied.setdefault("subject_day", {}).get((d["class_name"], d["batch_name"], day_name), set())
-                if d["subject"] in class_day_subjects:
-                    continue
-                if any((day_name, s) in f_lim.get("unavailable", set()) for s in block):
-                    continue
-                if _candidate_blocked_by_scheduler_rules(d, day_name, block, scheduler_rules):
-                    continue
-
-                base_score = _candidate_scheduler_rule_score(d, day_name, block, scheduler_rules)
-                alignment_score = _parallel_lab_alignment_score(d, day_idx, block)
-
-                if parallel_group and not group_has_fallback_placement:
-                    feasible, assigned_rooms = _parallel_group_feasible(parallel_group, day_idx, start)
-                    if feasible:
-                        room = assigned_rooms.get(idx)
-                        if room:
-                            strict_sync_candidates.append((base_score + alignment_score + 200, day_idx, start, room, True))
+                for start in range(0, len(SLOTS) - d["duration"] + 1):
+                    if fixed_signature and (day_idx, start) != fixed_signature:
+                        continue
+                    block = list(range(start, start + d["duration"]))
+                    if not _block_is_clock_continuous(block):
+                        continue
+                    if any(_is_break_slot(slot_index) for slot_index in block):
+                        continue
+                    if any((day_idx, s) in occupied["class_full"].get(d["class_name"], set()) for s in block):
+                        continue
+                    if not parallel_lab and any((day_idx, s) in occupied["class_lab"].get(d["class_name"], set()) for s in block):
+                        continue
+                    if d["batch_name"] and any((day_idx, s) in occupied["batch"].get((d["class_name"], d["batch_name"]), set()) for s in block):
+                        continue
+                    if any((day_idx, s) in occupied["faculty"].get(faculty_name, set()) for s in block):
+                        continue
+                    day_name = DAYS[day_idx]
+                    class_day_subjects = occupied.setdefault("subject_day", {}).get((d["class_name"], d["batch_name"], day_name), set())
+                    if d["subject"] in class_day_subjects:
+                        continue
+                    if any((day_name, s) in f_lim.get("unavailable", set()) for s in block):
+                        continue
+                    if _candidate_blocked_by_scheduler_rules(d, day_name, block, scheduler_rules):
                         continue
 
-                room = _pick_room(
-                    rooms,
-                    "Lab" if d["is_lab"] else "Classroom",
-                    d["batch_size"],
-                    occupied["room"],
-                    day_idx,
-                    block,
-                )
-                if not room:
-                    continue
-                fallback_penalty = -50 if parallel_group else 0
-                fallback_candidates.append((base_score + alignment_score + fallback_penalty, day_idx, start, room, False))
+                    base_score = _candidate_scheduler_rule_score(d, day_name, block, scheduler_rules) + faculty_bonus
+                    alignment_score = _parallel_lab_alignment_score(d, day_idx, block)
+
+                    if parallel_group and not group_has_fallback_placement and faculty_name == d.get("preferred_faculty"):
+                        feasible, assigned_rooms = _parallel_group_feasible(parallel_group, day_idx, start)
+                        if feasible:
+                            room = assigned_rooms.get(idx)
+                            if room:
+                                strict_sync_candidates.append((base_score + alignment_score + 200, day_idx, start, room, faculty_name, True))
+                            continue
+
+                    room = _pick_room(
+                        rooms,
+                        "Lab" if d["is_lab"] else "Classroom",
+                        d["batch_size"],
+                        occupied["room"],
+                        day_idx,
+                        block,
+                    )
+                    if not room:
+                        continue
+                    fallback_penalty = -50 if parallel_group else 0
+                    fallback_candidates.append((base_score + alignment_score + fallback_penalty, day_idx, start, room, faculty_name, False))
         cands = strict_sync_candidates if strict_sync_candidates else fallback_candidates
-        cands.sort(key=lambda x: (-x[0], x[1], x[2], x[3]))
-        return [(day_idx, start, room, sync_lock) for _score, day_idx, start, room, sync_lock in cands]
+        cands.sort(key=lambda x: (-x[0], x[1], x[2], x[3], x[4]))
+        return [(day_idx, start, room, faculty_name, sync_lock) for _score, day_idx, start, room, faculty_name, sync_lock in cands]
 
     def apply_place(idx, cand):
         d = demands[idx]
         parallel_lab = _is_parallel_batch_lab(d.get("batch_name"), d.get("is_lab"))
-        day_idx, start, room, sync_lock = cand
+        day_idx, start, room, faculty_name, sync_lock = cand
         block = list(range(start, start + d["duration"]))
         day_name = DAYS[day_idx]
         occupied["subject_day"].setdefault((d["class_name"], d["batch_name"], day_name), set()).add(d["subject"])
@@ -1489,17 +1584,18 @@ def _solve_with_backtracking(demands, faculty_meta, rooms, scheduler_rules=None)
                 occupied["class_full"].setdefault(d["class_name"], set()).add((day_idx, s))
                 if d["batch_name"]:
                     occupied["batch"].setdefault((d["class_name"], d["batch_name"]), set()).add((day_idx, s))
-            occupied["faculty"].setdefault(d["faculty"], set()).add((day_idx, s))
+            occupied["faculty"].setdefault(faculty_name, set()).add((day_idx, s))
             occupied["room"].setdefault(room, set()).add((day_idx, s))
-            faculty_day_load[d["faculty"]][day_idx] += 1
-            faculty_week_load[d["faculty"]] += 1
-        placements[idx] = {"day_idx": day_idx, "start": start, "room": room, "sync_lock": bool(sync_lock)}
+            faculty_day_load[faculty_name][day_idx] += 1
+            faculty_week_load[faculty_name] += 1
+        placements[idx] = {"day_idx": day_idx, "start": start, "room": room, "faculty": faculty_name, "sync_lock": bool(sync_lock)}
 
     def undo_place(idx):
         p = placements[idx]
         if not p:
             return
         d = demands[idx]
+        faculty_name = p.get("faculty") or d.get("faculty")
         parallel_lab = _is_parallel_batch_lab(d.get("batch_name"), d.get("is_lab"))
         block = list(range(p["start"], p["start"] + d["duration"]))
         day_name = DAYS[p["day_idx"]]
@@ -1512,10 +1608,10 @@ def _solve_with_backtracking(demands, faculty_meta, rooms, scheduler_rules=None)
                 occupied["class_full"][d["class_name"]].discard((p["day_idx"], s))
                 if d["batch_name"]:
                     occupied["batch"][(d["class_name"], d["batch_name"])] .discard((p["day_idx"], s))
-            occupied["faculty"][d["faculty"]].discard((p["day_idx"], s))
+            occupied["faculty"][faculty_name].discard((p["day_idx"], s))
             occupied["room"][p["room"]].discard((p["day_idx"], s))
-            faculty_day_load[d["faculty"]][p["day_idx"]] -= 1
-            faculty_week_load[d["faculty"]] -= 1
+            faculty_day_load[faculty_name][p["day_idx"]] -= 1
+            faculty_week_load[faculty_name] -= 1
         still_present = any(
             placements[j] and j != idx and demands[j]["class_name"] == d["class_name"] and demands[j]["batch_name"] == d["batch_name"]
             and demands[j]["subject"] == d["subject"] and placements[j]["day_idx"] == p["day_idx"]
@@ -1544,16 +1640,16 @@ def _solve_with_backtracking(demands, faculty_meta, rooms, scheduler_rules=None)
         if not unassigned:
             return True
         idx, cnt = choose_index(unassigned)
+        next_unassigned = [u for u in unassigned if u != idx]
         if cnt == 0:
-            return False
+            return dfs(next_unassigned)
         cands = candidate_slots(demands[idx], idx)
         for cand in cands:
             apply_place(idx, cand)
-            next_unassigned = [u for u in unassigned if u != idx]
             if dfs(next_unassigned):
                 return True
             undo_place(idx)
-        return False
+        return dfs(next_unassigned)
 
     unassigned = list(range(len(demands)))
     solved = dfs(unassigned)
@@ -1572,6 +1668,100 @@ def _solve_with_backtracking(demands, faculty_meta, rooms, scheduler_rules=None)
         else:
             missing.append(demands[i])
     return placed, missing
+def _diagnose_unplaced_demand(demand, faculty_meta, rooms, existing_placements=None, scheduler_rules=None):
+    scheduler_rules = scheduler_rules or []
+    existing_placements = existing_placements or []
+    occupied = {"class_full": {}, "class_lab": {}, "batch": {}, "faculty": {}, "room": {}, "subject_day": {}}
+    faculty_day_load = {f: {i: 0 for i in range(len(DAYS))} for f in faculty_meta}
+    faculty_week_load = {f: 0 for f in faculty_meta}
+    _seed_from_locked(occupied, faculty_day_load, faculty_week_load)
+
+    for placed_demand, placement in existing_placements:
+        chosen_faculty = placement.get("faculty") or placed_demand.get("faculty")
+        block = list(range(placement["start"], placement["start"] + placed_demand["duration"]))
+        day_idx = placement["day_idx"]
+        day_name = DAYS[day_idx]
+        parallel_lab = _is_parallel_batch_lab(placed_demand.get("batch_name"), placed_demand.get("is_lab"))
+        occupied["subject_day"].setdefault((placed_demand["class_name"], placed_demand["batch_name"], day_name), set()).add(placed_demand["subject"])
+        for slot in block:
+            if parallel_lab:
+                occupied["class_lab"].setdefault(placed_demand["class_name"], set()).add((day_idx, slot))
+                occupied["batch"].setdefault((placed_demand["class_name"], placed_demand["batch_name"]), set()).add((day_idx, slot))
+            else:
+                occupied["class_full"].setdefault(placed_demand["class_name"], set()).add((day_idx, slot))
+                if placed_demand.get("batch_name"):
+                    occupied["batch"].setdefault((placed_demand["class_name"], placed_demand["batch_name"]), set()).add((day_idx, slot))
+            occupied["faculty"].setdefault(chosen_faculty, set()).add((day_idx, slot))
+            occupied["room"].setdefault(placement["room"], set()).add((day_idx, slot))
+            faculty_day_load.setdefault(chosen_faculty, {i: 0 for i in range(len(DAYS))})[day_idx] += 1
+            faculty_week_load[chosen_faculty] = faculty_week_load.get(chosen_faculty, 0) + 1
+
+    reasons = {}
+    faculty_options = [f for f in (demand.get("faculty_options") or [demand.get("faculty")]) if f in faculty_meta]
+    if not faculty_options:
+        return "No eligible faculty mapped for this subject"
+
+    any_candidate = False
+    for faculty_name in faculty_options:
+        meta = faculty_meta[faculty_name]
+        if faculty_week_load.get(faculty_name, 0) >= meta.get("max_week", 20):
+            reasons[f"Faculty {faculty_name} reached weekly limit"] = reasons.get(f"Faculty {faculty_name} reached weekly limit", 0) + 1
+            continue
+        faculty_found_slot = False
+        for day_idx, day_name in enumerate(DAYS):
+            if faculty_day_load.get(faculty_name, {}).get(day_idx, 0) >= meta.get("max_day", 4):
+                reasons[f"Faculty {faculty_name} reached daily limit on {day_name}"] = reasons.get(f"Faculty {faculty_name} reached daily limit on {day_name}", 0) + 1
+                continue
+            for start in range(0, len(SLOTS) - demand["duration"] + 1):
+                block = list(range(start, start + demand["duration"]))
+                if not _block_is_clock_continuous(block):
+                    reasons["Required slots are not continuous"] = reasons.get("Required slots are not continuous", 0) + 1
+                    continue
+                if any(_is_break_slot(slot_index) for slot_index in block):
+                    reasons["Lunch break blocks the required slot"] = reasons.get("Lunch break blocks the required slot", 0) + 1
+                    continue
+                if any((day_idx, s) in occupied["class_full"].get(demand["class_name"], set()) for s in block):
+                    reasons[f"Class {demand['class_name']} is already occupied"] = reasons.get(f"Class {demand['class_name']} is already occupied", 0) + 1
+                    continue
+                if not demand.get("is_lab") and any((day_idx, s) in occupied["class_lab"].get(demand["class_name"], set()) for s in block):
+                    reasons[f"Class {demand['class_name']} already has a lab in that slot"] = reasons.get(f"Class {demand['class_name']} already has a lab in that slot", 0) + 1
+                    continue
+                if demand.get("batch_name") and any((day_idx, s) in occupied["batch"].get((demand["class_name"], demand["batch_name"]), set()) for s in block):
+                    reasons[f"Batch {demand['batch_name']} is already occupied"] = reasons.get(f"Batch {demand['batch_name']} is already occupied", 0) + 1
+                    continue
+                if any((day_idx, s) in occupied["faculty"].get(faculty_name, set()) for s in block):
+                    reasons[f"Faculty {faculty_name} is already occupied"] = reasons.get(f"Faculty {faculty_name} is already occupied", 0) + 1
+                    continue
+                class_day_subjects = occupied.get("subject_day", {}).get((demand["class_name"], demand["batch_name"], day_name), set())
+                if demand["subject"] in class_day_subjects:
+                    reasons[f"{demand['subject']} is already scheduled for {demand['class_name']} on {day_name}"] = reasons.get(f"{demand['subject']} is already scheduled for {demand['class_name']} on {day_name}", 0) + 1
+                    continue
+                if any((day_name, s) in meta.get("unavailable", set()) for s in block):
+                    reasons[f"Faculty {faculty_name} is unavailable on {day_name}"] = reasons.get(f"Faculty {faculty_name} is unavailable on {day_name}", 0) + 1
+                    continue
+                if _candidate_blocked_by_scheduler_rules(demand, day_name, block, scheduler_rules):
+                    reasons["Scheduler rules block all remaining slots"] = reasons.get("Scheduler rules block all remaining slots", 0) + 1
+                    continue
+                room = _pick_room(rooms, "Lab" if demand.get("is_lab") else "Classroom", demand.get("batch_size"), occupied["room"], day_idx, block)
+                if not room:
+                    room_type = "lab" if demand.get("is_lab") else "classroom"
+                    reasons[f"No free {room_type} with enough capacity"] = reasons.get(f"No free {room_type} with enough capacity", 0) + 1
+                    continue
+                faculty_found_slot = True
+                any_candidate = True
+                break
+            if faculty_found_slot:
+                break
+        if faculty_found_slot:
+            break
+
+    if any_candidate:
+        return "Only preference rules prevented placement"
+    if not reasons:
+        return "No feasible slot found"
+    return max(reasons.items(), key=lambda item: item[1])[0]
+
+
 def _collect_validation_issues():
     issues = []
     faculty_catalog = _get_faculty_catalog()
@@ -1711,18 +1901,28 @@ def _collect_validation_issues():
     _, _, _, _, req_counter = _build_requirements(None)
     rows = con.execute(
         """
-        SELECT year,class_name,batch_name,subject,faculty,is_lab,COUNT(DISTINCT day || '-' || CAST(slot_index AS VARCHAR))
+        SELECT year,class_name,batch_name,subject,is_lab,COUNT(DISTINCT day || '-' || CAST(slot_index AS VARCHAR))
         FROM timetable
-        GROUP BY year,class_name,batch_name,subject,faculty,is_lab
+        GROUP BY year,class_name,batch_name,subject,is_lab
         """
     ).fetchall()
-    scheduled_counter = {(r[0], r[1], r[2], r[3], r[4], r[5]): r[6] for r in rows}
+    scheduled_counter = {(r[0], r[1], r[2], r[3], r[4]): r[5] for r in rows}
+
+    expected_counter = {}
     for req_key, expected_count in req_counter.items():
-        short_key = req_key[:6]
-        scheduled = scheduled_counter.get(short_key, 0)
-        if scheduled < expected_count * req_key[6]:
+        aggregate_key = (req_key[0], req_key[1], req_key[2], req_key[3], req_key[5])
+        expected_counter[aggregate_key] = expected_counter.get(aggregate_key, 0) + (expected_count * req_key[6])
+
+    for req_key, expected_slots in expected_counter.items():
+        scheduled = scheduled_counter.get(req_key, 0)
+        if scheduled < expected_slots:
+            year, class_name, batch_name, subject, is_lab = req_key
+            session_size = 2 if is_lab else 1
+            missing_slots = expected_slots - scheduled
+            missing_sessions = (missing_slots + session_size - 1) // session_size
+            batch_suffix = f" batch {batch_name}" if batch_name else ""
             issues.append(
-                f"Unassigned requirement: Y{req_key[0]} {req_key[1]} {req_key[3]} {req_key[4]} ({expected_count}x{req_key[6]} slots)"
+                f"Unassigned requirement: Y{year} {class_name} {subject}{batch_suffix} ({missing_sessions}x{session_size} slots missing)"
             )
     return issues
 
@@ -2223,7 +2423,20 @@ def rooms_page():
 @app.route("/timetable")
 @login_required
 def timetable_page():
-    return render_template("timetable.html")
+    years_from_classes = [r[0] for r in con.execute("SELECT DISTINCT year FROM classes WHERE year IS NOT NULL ORDER BY year").fetchall()]
+    years_from_timetable = [r[0] for r in con.execute("SELECT DISTINCT year FROM timetable WHERE year IS NOT NULL ORDER BY year").fetchall()]
+    initial_years = sorted({int(y) for y in years_from_classes + years_from_timetable if y is not None}) or [1]
+    initial_departments = [
+        r[0]
+        for r in con.execute(
+            "SELECT DISTINCT department FROM classes WHERE department IS NOT NULL AND TRIM(department) <> '' ORDER BY department"
+        ).fetchall()
+    ]
+    return render_template(
+        "timetable.html",
+        initial_years=initial_years,
+        initial_departments=initial_departments,
+    )
 
 
 @app.route("/stats")
@@ -2853,7 +3066,7 @@ def generate():
                 [
                     next_id,
                     d["class_name"],
-                    d["faculty"],
+                    p.get("faculty", d["faculty"]),
                     d["subject"],
                     p["room"],
                     DAYS[p["day_idx"]],
@@ -2871,7 +3084,7 @@ def generate():
             next_id += 1
 
     for i, m in enumerate(missing):
-        missing[i]["reason"] = "No feasible slot found"
+        missing[i]["reason"] = _diagnose_unplaced_demand(m, faculty_meta, rooms, existing_placements=placed, scheduler_rules=scheduler_rules)
     return jsonify({"message": "Generated timetable", "unplaced": missing, "placed_count": len(placed)})
 
 
@@ -2934,7 +3147,7 @@ def regenerate_unlocked():
                 [
                     next_id,
                     d["class_name"],
-                    d["faculty"],
+                    p.get("faculty", d["faculty"]),
                     d["subject"],
                     p["room"],
                     DAYS[p["day_idx"]],
@@ -2952,7 +3165,7 @@ def regenerate_unlocked():
             next_id += 1
 
     for i, m in enumerate(missing):
-        missing[i]["reason"] = "No feasible slot found"
+        missing[i]["reason"] = _diagnose_unplaced_demand(m, faculty_meta, rooms, existing_placements=placed, scheduler_rules=scheduler_rules)
     return jsonify({"message": "Generated timetable", "unplaced": missing, "placed_count": len(placed)})
 
 
@@ -2967,21 +3180,30 @@ def validate():
 def get_timetable():
     selected_year = int(request.args.get("year", 1))
     selected_department = (request.args.get("department") or "").strip()
-    params = [selected_year]
-    dept_filter = ""
+
+    allowed_classes = None
     if selected_department:
-        dept_filter = "AND t.class_name IN (SELECT 'Y' || year || '-' || CASE WHEN COALESCE(division, '') = '' THEN name ELSE division END FROM classes WHERE department = ?)"
-        params.append(selected_department)
+        class_rows = con.execute(
+            "SELECT name, year, department, division FROM classes WHERE year=? AND department=? ORDER BY division, name",
+            [selected_year, selected_department],
+        ).fetchall()
+        allowed_classes = set()
+        for name, year, department, division in class_rows:
+            allowed_classes.update(_class_name_aliases_from_values(year, name, division, department))
 
     rows = con.execute(
-        f"""
+        """
         SELECT t.class_name,t.batch_name,t.faculty,t.subject,t.room,t.day,t.slot_index,t.slot_label,t.is_lab,t.locked
         FROM timetable t
-        WHERE t.year=? {dept_filter}
+        WHERE t.year=?
         ORDER BY t.class_name, t.day, t.slot_index
         """,
-        params,
+        [selected_year],
     ).fetchall()
+    if allowed_classes is not None:
+        filtered_rows = [r for r in rows if (r[0] or '').strip() in allowed_classes]
+        if filtered_rows:
+            rows = filtered_rows
 
     entries = [
         {
@@ -3767,6 +3989,8 @@ def request_entity_too_large(_e):
     return jsonify({"error": "File too large (max 10 MB)"}), 413
 
 
+init_db()
+
+
 if __name__ == "__main__":
-    init_db()
     app.run(debug=True, use_reloader=False)
