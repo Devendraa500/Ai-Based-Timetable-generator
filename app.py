@@ -2168,7 +2168,7 @@ def add_room():
         if room_type not in {"Classroom", "Lab"}:
             raise ValueError("Room type must be Classroom or Lab")
         capacity = _require_int(data, "capacity", "Capacity", 1)
-        department = _require_text(data, "department", "Department")
+        department = "General"  # Default department
     except ValueError as e:
         return jsonify({"status": "error", "message": str(e)}), 400
     new_id = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM rooms").fetchone()[0]
@@ -2179,9 +2179,9 @@ def add_room():
 @app.route("/get_rooms")
 @login_required
 def get_rooms():
-    rows = con.execute("SELECT id, name, type, capacity, department FROM rooms ORDER BY name").fetchall()
+    rows = con.execute("SELECT id, name, type, capacity FROM rooms ORDER BY name").fetchall()
     return jsonify(
-        [{"id": r[0], "name": r[1], "type": r[2], "capacity": r[3], "department": r[4]} for r in rows]
+        [{"id": r[0], "name": r[1], "type": r[2], "capacity": r[3]} for r in rows]
     )
 
 
@@ -2196,7 +2196,7 @@ def update_room():
         if room_type not in {"Classroom", "Lab"}:
             raise ValueError("Room type must be Classroom or Lab")
         capacity = _require_int(data, "capacity", "Capacity", 1)
-        department = _require_text(data, "department", "Department")
+        department = "General"  # Default department
     except ValueError as e:
         return jsonify({"status": "error", "message": str(e)}), 400
     old = con.execute("SELECT name FROM rooms WHERE id=?", [room_id]).fetchone()

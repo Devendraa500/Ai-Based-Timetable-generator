@@ -17,7 +17,12 @@
                 <div class="col-md-4"><input id="division" class="form-control" placeholder="Division"></div>
                 <div class="col-md-4"><input id="strength" type="number" min="1" class="form-control" value="60" placeholder="Strength"></div>
             </div>
-            <input id="dept" class="form-control mb-3" placeholder="Department name">
+            <select id="dept" class="form-select mb-3">
+                <option value="">Select Department</option>
+                <option value="Computer Science">Computer Science</option>
+                <option value="Electronics">Electronics</option>
+                <option value="Mechanical">Mechanical</option>
+            </select>
             <div class="d-flex gap-2">
                 <button class="btn btn-primary" onclick="saveClass()">Save Class</button>
                 <button class="btn btn-outline-secondary" onclick="resetClassForm()">Clear</button>

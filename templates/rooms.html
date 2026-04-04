@@ -19,7 +19,6 @@
         </div>
         <div class="col-md-4"><input id="capacity" type="number" min="1" class="form-control" value="60" placeholder="Capacity"></div>
     </div>
-    <input id="department" class="form-control mb-3" value="General" placeholder="Department">
     <div class="d-flex gap-2">
         <button class="btn btn-warning" onclick="saveRoom()">Save Room</button>
         <button class="btn btn-outline-secondary" onclick="resetRoomForm()">Clear</button>
@@ -39,7 +38,6 @@ function resetRoomForm(){
     document.getElementById('name').value='';
     document.getElementById('type').value='Classroom';
     document.getElementById('capacity').value='60';
-    document.getElementById('department').value='General';
     document.getElementById('roomModeBadge').textContent='New';
     document.getElementById('roomModeBadge').className='badge text-bg-primary';
 }
@@ -48,8 +46,7 @@ async function saveRoom(){
         const payload = {
             name: reqv('name','Room name'),
             type: reqv('type','Room type'),
-            capacity: parseInt(reqv('capacity','Capacity')),
-            department: reqv('department','Department')
+            capacity: parseInt(reqv('capacity','Capacity'))
         };
         const editId = document.getElementById('room_edit_id').value;
         const res = await fetch(editId ? '/update_room' : '/add_room', {
@@ -69,7 +66,6 @@ function startEditRoom(id){
     document.getElementById('name').value=r.name;
     document.getElementById('type').value=r.type;
     document.getElementById('capacity').value=r.capacity;
-    document.getElementById('department').value=r.department;
     document.getElementById('roomModeBadge').textContent='Editing';
     document.getElementById('roomModeBadge').className='badge text-bg-warning';
     window.scrollTo({top:0, behavior:'smooth'});
@@ -95,7 +91,6 @@ function loadRooms(){
                     <div>
                         <div class="fw-semibold">${r.name}</div>
                         <div class="small">${r.type} | Capacity: ${r.capacity}</div>
-                        <div class="small text-secondary">${r.department}</div>
                     </div>
                     <div class="d-flex gap-2">
                         <button class="btn btn-sm btn-outline-primary" onclick="startEditRoom(${r.id})">Edit</button>
