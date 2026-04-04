@@ -2625,7 +2625,7 @@ def add_batch():
 def get_batches():
     rows = con.execute(
         """
-        SELECT b.id, b.class_id, c.year, c.division, c.name, b.batch_name, b.size
+        SELECT b.id, b.class_id, c.year, c.division, c.name, c.department, b.batch_name, b.size
         FROM batches b
         LEFT JOIN classes c ON c.id=b.class_id
         ORDER BY c.year, c.division, b.batch_name
@@ -2639,8 +2639,9 @@ def get_batches():
                 "year": r[2],
                 "division": r[3],
                 "class_name": r[4],
-                "batch_name": r[5],
-                "size": r[6],
+                "department": r[5],
+                "batch_name": r[6],
+                "size": r[7],
             }
             for r in rows
         ]

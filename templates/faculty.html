@@ -6,7 +6,7 @@
 <div class="card-box mb-3">
     <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="mb-0">Faculty Profile</h5>
-        <span id="facultyModeBadge" class="badge text-bg-primary">New</span>
+        <!--<span id="facultyModeBadge" class="badge text-bg-primary">New</span>-->
     </div>
     <input type="hidden" id="faculty_edit_id">
     <div class="row g-2 mb-2">
@@ -108,8 +108,8 @@ function resetFacultyForm(){
     document.getElementById('max_week').value='20';
     document.querySelectorAll('.year-check').forEach(x=>x.checked=true);
     resetUnavailable();
-    document.getElementById('facultyModeBadge').textContent='New';
-    document.getElementById('facultyModeBadge').className='badge text-bg-primary';
+    /**document.getElementById('facultyModeBadge').textContent='New';
+    document.getElementById('facultyModeBadge').className='badge text-bg-primary';**/
 }
 function fillUnavailable(items){
     resetUnavailable();
@@ -163,8 +163,8 @@ function startEditFaculty(id){
     document.getElementById('max_week').value = f.max_week;
     document.querySelectorAll('.year-check').forEach(x=>x.checked = (f.allowed_years || []).includes(parseInt(x.value, 10)));
     fillUnavailable(f.unavailable || []);
-    document.getElementById('facultyModeBadge').textContent='Editing';
-    document.getElementById('facultyModeBadge').className='badge text-bg-warning';
+    /**document.getElementById('facultyModeBadge').textContent='Editing';
+    document.getElementById('facultyModeBadge').className='badge text-bg-warning';**/
     window.scrollTo({top:0, behavior:'smooth'});
 }
 async function deleteFaculty(id){

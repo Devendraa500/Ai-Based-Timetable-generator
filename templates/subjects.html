@@ -6,7 +6,7 @@
 <div class="card-box mb-3">
     <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="mb-0">Subject</h5>
-        <span id="subjectModeBadge" class="badge text-bg-primary">New</span>
+        <!--<span id="subjectModeBadge" class="badge text-bg-primary">New</span>-->
     </div>
     <input type="hidden" id="subject_edit_id">
     <div class="row g-2 mb-2">
@@ -62,8 +62,8 @@ function resetSubjectForm(){
     document.getElementById('weekly').value='3';
     syncDuration();
     document.getElementById('faculty').value='';
-    document.getElementById('subjectModeBadge').textContent='New';
-    document.getElementById('subjectModeBadge').className='badge text-bg-primary';
+    /**document.getElementById('subjectModeBadge').textContent='New';
+    document.getElementById('subjectModeBadge').className='badge text-bg-primary';**/
 }
 function loadFaculty(){
     return fetch('/get_faculty').then(res=>res.json()).then(data=>{
@@ -105,8 +105,8 @@ function startEditSubject(id){
     document.getElementById('weekly').value = s.weekly_sessions;
     syncDuration();
     document.getElementById('faculty').value = s.faculty;
-    document.getElementById('subjectModeBadge').textContent='Editing';
-    document.getElementById('subjectModeBadge').className='badge text-bg-warning';
+    /**document.getElementById('subjectModeBadge').textContent='Editing';
+    document.getElementById('subjectModeBadge').className='badge text-bg-warning';**/
     window.scrollTo({top:0, behavior:'smooth'});
 }
 async function deleteSubject(id){

@@ -6,7 +6,7 @@
 <div class="card-box mb-3">
     <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="mb-0">Room</h5>
-        <span id="roomModeBadge" class="badge text-bg-primary">New</span>
+        <!--<span id="roomModeBadge" class="badge text-bg-primary">New</span>-->
     </div>
     <input type="hidden" id="room_edit_id">
     <div class="row g-2 mb-2">
@@ -38,8 +38,8 @@ function resetRoomForm(){
     document.getElementById('name').value='';
     document.getElementById('type').value='Classroom';
     document.getElementById('capacity').value='60';
-    document.getElementById('roomModeBadge').textContent='New';
-    document.getElementById('roomModeBadge').className='badge text-bg-primary';
+    /**document.getElementById('roomModeBadge').textContent='New';
+    document.getElementById('roomModeBadge').className='badge text-bg-primary';**/
 }
 async function saveRoom(){
     try {
@@ -66,8 +66,8 @@ function startEditRoom(id){
     document.getElementById('name').value=r.name;
     document.getElementById('type').value=r.type;
     document.getElementById('capacity').value=r.capacity;
-    document.getElementById('roomModeBadge').textContent='Editing';
-    document.getElementById('roomModeBadge').className='badge text-bg-warning';
+    /**document.getElementById('roomModeBadge').textContent='Editing';
+    document.getElementById('roomModeBadge').className='badge text-bg-warning';**/
     window.scrollTo({top:0, behavior:'smooth'});
 }
 async function deleteRoom(id){

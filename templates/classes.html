@@ -8,7 +8,7 @@
         <div class="card-box">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="mb-0">Class Division</h5>
-                <span id="classModeBadge" class="badge text-bg-primary">New</span>
+                <!--<span id="classModeBadge" class="badge text-bg-primary">New</span>-->
             </div>
             <input type="hidden" id="class_edit_id">
             <div class="row g-2 mb-2">
@@ -33,9 +33,11 @@
             </div>
             <select id="dept" class="form-select mb-3">
                 <option value="">Select Department</option>
-                <option value="Computer Science">Computer Science</option>
-                <option value="Electronics">Electronics</option>
-                <option value="Mechanical">Mechanical</option>
+                <option value="CS">CS</option>
+                <option value="IT">IT</option>
+                <option value="ECS">ECS</option>
+                <option value="AUTO">AUTO</option>
+                <option value="MECH">MECH</option>
             </select>
             <div class="d-flex gap-2">
                 <button class="btn btn-primary" onclick="saveClass()">Save Class</button>
@@ -47,7 +49,7 @@
         <div class="card-box">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="mb-0">Batch</h5>
-                <span id="batchModeBadge" class="badge text-bg-primary">New</span>
+                <!--<span id="batchModeBadge" class="badge text-bg-primary">New</span>-->
             </div>
             <input type="hidden" id="batch_edit_id">
             <select id="class_id" class="form-select mb-2">
@@ -108,16 +110,16 @@ function resetClassForm(){
     const deptSel = document.getElementById('dept');
     [...deptSel.options].forEach(o => { if (!FIXED_DEPTS.includes(o.value)) o.remove(); });
     deptSel.value = '';
-    document.getElementById('classModeBadge').textContent = 'New';
-    document.getElementById('classModeBadge').className = 'badge text-bg-primary';
+    /**document.getElementById('classModeBadge').textContent = 'New';
+    document.getElementById('classModeBadge').className = 'badge text-bg-primary';**/
 }
 function resetBatchForm(){
     document.getElementById('batch_edit_id').value = '';
     document.getElementById('class_id').value = '';
     document.getElementById('batch_name').value = '';
     document.getElementById('batch_size').value = '30';
-    document.getElementById('batchModeBadge').textContent = 'New';
-    document.getElementById('batchModeBadge').className = 'badge text-bg-primary';
+    /**document.getElementById('batchModeBadge').textContent = 'New';
+    document.getElementById('batchModeBadge').className = 'badge text-bg-primary';**/
 }
 async function saveClass(){
     try {
@@ -132,7 +134,7 @@ async function saveClass(){
         const editId = document.getElementById('class_edit_id').value;
         await postJSON(editId ? '/update_class' : '/add_class', editId ? {...payload, id: parseInt(editId)} : payload);
         resetClassForm();
-        loadAll();
+        await loadAll();
     } catch (e) { showError(e); }
 }
 async function saveBatch(){
@@ -145,7 +147,7 @@ async function saveBatch(){
         const editId = document.getElementById('batch_edit_id').value;
         await postJSON(editId ? '/update_batch' : '/add_batch', editId ? {...payload, id: parseInt(editId)} : payload);
         resetBatchForm();
-        loadAll();
+        await loadAll();
     } catch (e) { showError(e); }
 }
 function ensureClassDeptOption(value){
@@ -166,8 +168,8 @@ function startEditClass(id){
     document.getElementById('strength').value = c.strength;
     ensureClassDeptOption(c.department);
     document.getElementById('dept').value = c.department;
-    document.getElementById('classModeBadge').textContent = 'Editing';
-    document.getElementById('classModeBadge').className = 'badge text-bg-warning';
+    /**document.getElementById('classModeBadge').textContent = 'Editing';
+    document.getElementById('classModeBadge').className = 'badge text-bg-warning';**/
     window.scrollTo({top: 0, behavior: 'smooth'});
 }
 async function deleteClass(id){
@@ -177,7 +179,7 @@ async function deleteClass(id){
     try {
         await postJSON('/delete_class', {id});
         resetClassForm();
-        loadAll();
+        await loadAll();
     } catch(e){ showError(e); }
 }
 function startEditBatch(id){
@@ -187,8 +189,8 @@ function startEditBatch(id){
     document.getElementById('class_id').value = b.class_id;
     document.getElementById('batch_name').value = b.batch_name;
     document.getElementById('batch_size').value = b.size;
-    document.getElementById('batchModeBadge').textContent = 'Editing';
-    document.getElementById('batchModeBadge').className = 'badge text-bg-warning';
+    /**document.getElementById('batchModeBadge').textContent = 'Editing';
+    document.getElementById('batchModeBadge').className = 'badge text-bg-warning';**/
     window.scrollTo({top: 0, behavior: 'smooth'});
 }
 async function deleteBatch(id){
@@ -198,14 +200,17 @@ async function deleteBatch(id){
     try {
         await postJSON('/delete_batch', {id});
         resetBatchForm();
-        loadAll();
+        await loadAll();
     } catch(e){ showError(e); }
 }
 
 function loadClasses(){
     return fetch('/get_classes').then(r=>r.json()).then(d=>{
         classCache = d;
-        document.getElementById('class_id').innerHTML = `<option value="">Select class division</option>` + d.map(c=>`<option value="${c.id}">${c.display_name}</option>`).join('');
+        document.getElementById('class_id').innerHTML = `<option value="">Select class division</option>` + d.map(c=>{
+            const deptLabel = c.department ? ` ${c.department}` : '';
+            return `<option value="${c.id}">${c.display_name}${deptLabel}</option>`;
+        }).join('');
         document.getElementById('list').innerHTML = d.map(c=>`
             <div class="border rounded-3 p-3 mb-2">
                 <div class="d-flex justify-content-between align-items-start gap-2">
@@ -226,11 +231,14 @@ function loadClasses(){
 function loadBatches(){
     return fetch('/get_batches').then(r=>r.json()).then(d=>{
         batchCache = d;
-        document.getElementById('batchList').innerHTML = d.map(b=>`
+        document.getElementById('batchList').innerHTML = d.map(b=>{
+            const classLabel = `Y${ROMAN[b.year] || b.year} ${b.division || b.class_name}`;
+            const deptLabel = b.department ? ` ${b.department}` : '';
+            return `
             <div class="border rounded-3 p-3 mb-2">
                 <div class="d-flex justify-content-between align-items-start gap-2">
                     <div>
-                        <div class="fw-semibold">Y${ROMAN[b.year] || b.year} ${b.division || b.class_name} - ${b.batch_name}</div>
+                        <div class="fw-semibold">${classLabel}${deptLabel} - ${b.batch_name}</div>
                         <div class="small">Size: ${b.size}</div>
                     </div>
                     <div class="d-flex gap-2">
@@ -239,10 +247,17 @@ function loadBatches(){
                     </div>
                 </div>
             </div>
-        `).join('') || `<div class="muted">No batches added yet.</div>`;
+        `}).join('') || `<div class="muted">No batches added yet.</div>`;
     });
 }
-function loadAll(){ Promise.all([loadClasses(), loadBatches()]); }
+async function loadAll(){
+    try {
+        await loadClasses();
+        await loadBatches();
+    } catch (e) {
+        showError(e);
+    }
+}
 resetClassForm();
 resetBatchForm();
 loadAll();
