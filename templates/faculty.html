@@ -10,13 +10,35 @@
     </div>
     <input type="hidden" id="faculty_edit_id">
     <div class="row g-2 mb-2">
-        <div class="col-md-6"><input id="name" class="form-control" placeholder="Faculty name"></div>
-        <div class="col-md-6"><input id="dept" class="form-control" placeholder="Department"></div>
+        <div class="col-md-6">
+            <label for="name" class="form-label small mb-0">Faculty name</label>
+            <input id="name" class="form-control" placeholder="Faculty name">
+        </div>
+        <div class="col-md-6">
+            <label for="dept" class="form-label small mb-0">Department</label>
+            <select id="dept" class="form-select">
+                <option value="">Select Department</option>
+                <option value="CS">CS</option>
+                <option value="IT">IT</option>
+                <option value="ECS">ECS</option>
+                <option value="AUTO">AUTO</option>
+                <option value="MECH">MECH</option>
+            </select>
+        </div>
     </div>
-    <input id="subjects" class="form-control mb-2" placeholder="Handled subjects, comma separated">
+    <div class="mb-2">
+        <label for="subjects" class="form-label small mb-0">Handled subjects</label>
+        <input id="subjects" class="form-control" placeholder="Comma separated, e.g. DS, DBMS">
+    </div>
     <div class="row g-2 mb-3">
-        <div class="col-md-6"><input id="max_day" type="number" min="1" max="6" class="form-control" value="4" placeholder="Max slots per day"></div>
-        <div class="col-md-6"><input id="max_week" type="number" min="1" max="30" class="form-control" value="20" placeholder="Max slots per week"></div>
+        <div class="col-md-6">
+            <label for="max_day" class="form-label small mb-0">Max slots per day</label>
+            <input id="max_day" type="number" min="1" max="6" class="form-control" value="4" placeholder="e.g. 4">
+        </div>
+        <div class="col-md-6">
+            <label for="max_week" class="form-label small mb-0">Max slots per week</label>
+            <input id="max_week" type="number" min="1" max="30" class="form-control" value="20" placeholder="e.g. 20">
+        </div>
     </div>
     <div class="mb-3">
         <label class="form-label fw-semibold">Allowed years</label>
@@ -66,17 +88,21 @@
 <script>
 let facultyCache = [];
 const slotLabels = ["09:00-10:00","10:00-11:00","11:00-12:00","13:00-14:00","14:00-15:00","15:00-16:00"];
+const ROMAN_YEAR = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
 
-function selectedYears(){ return [...document.querySelectorAll('.year-check:checked')].map(x=>parseInt(x.value)); }
+function selectedYears(){ return [...document.querySelectorAll('.year-check:checked')].map(x=>parseInt(x.value, 10)); }
 function selectedUnavailable(){
     return [...document.querySelectorAll('.unavailable-check:checked')].map(x=>({day:x.dataset.day, slot_index: parseInt(x.dataset.slot)}));
 }
 function required(id, label){ const v=(document.getElementById(id).value||'').trim(); if(!v) throw new Error(label+' is required.'); return v; }
 function resetUnavailable(){ document.querySelectorAll('.unavailable-check').forEach(x=>x.checked=false); }
+const FIXED_DEPTS = ['', 'CS', 'IT', 'ECS', 'AUTO', 'MECH'];
 function resetFacultyForm(){
     document.getElementById('faculty_edit_id').value='';
     document.getElementById('name').value='';
-    document.getElementById('dept').value='';
+    const deptSel = document.getElementById('dept');
+    [...deptSel.options].forEach(o => { if (!FIXED_DEPTS.includes(o.value)) o.remove(); });
+    deptSel.value='';
     document.getElementById('subjects').value='';
     document.getElementById('max_day').value='4';
     document.getElementById('max_week').value='20';
@@ -116,16 +142,26 @@ async function saveFaculty(){
         loadFaculty();
     } catch(e){ alert(e.message || e); }
 }
+function ensureDeptOption(value){
+    if(!value) return;
+    const sel = document.getElementById('dept');
+    if([...sel.options].some(o => o.value === value)) return;
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = value;
+    sel.appendChild(opt);
+}
 function startEditFaculty(id){
     const f = facultyCache.find(x=>x.id===id);
     if(!f) return;
     document.getElementById('faculty_edit_id').value = f.id;
     document.getElementById('name').value = f.name;
+    ensureDeptOption(f.department);
     document.getElementById('dept').value = f.department;
     document.getElementById('subjects').value = (f.subjects || []).join(', ');
     document.getElementById('max_day').value = f.max_day;
     document.getElementById('max_week').value = f.max_week;
-    document.querySelectorAll('.year-check').forEach(x=>x.checked = (f.allowed_years || []).includes(parseInt(x.value)));
+    document.querySelectorAll('.year-check').forEach(x=>x.checked = (f.allowed_years || []).includes(parseInt(x.value, 10)));
     fillUnavailable(f.unavailable || []);
     document.getElementById('facultyModeBadge').textContent='Editing';
     document.getElementById('facultyModeBadge').className='badge text-bg-warning';
@@ -152,7 +188,7 @@ function loadFaculty(){
                     <div>
                         <div class="fw-semibold">${f.name}</div>
                         <div class="small text-secondary">${f.department}</div>
-                        <div class="small">Allowed years: ${(f.allowed_years || []).join(', ') || '—'} | Daily max: ${f.max_day} | Weekly max: ${f.max_week}</div>
+                        <div class="small">Allowed years: ${(f.allowed_years || []).map(y => ROMAN_YEAR[y] || y).join(', ') || '—'} | Daily max: ${f.max_day} | Weekly max: ${f.max_week}</div>
                         <div class="small">Subjects: ${(f.subjects || []).join(', ') || '—'}</div>
                         <div class="small">Unavailable slots: ${(f.unavailable || []).map(x=>`${x.day} ${slotLabels[x.slot_index] || ('Slot ' + (x.slot_index+1))}`).join(', ') || 'None'}</div>
                     </div>
