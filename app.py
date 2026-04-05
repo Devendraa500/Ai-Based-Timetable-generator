@@ -2423,15 +2423,9 @@ def rooms_page():
 @app.route("/timetable")
 @login_required
 def timetable_page():
-    years_from_classes = [r[0] for r in con.execute("SELECT DISTINCT year FROM classes WHERE year IS NOT NULL ORDER BY year").fetchall()]
-    years_from_timetable = [r[0] for r in con.execute("SELECT DISTINCT year FROM timetable WHERE year IS NOT NULL ORDER BY year").fetchall()]
-    initial_years = sorted({int(y) for y in years_from_classes + years_from_timetable if y is not None}) or [1]
-    initial_departments = [
-        r[0]
-        for r in con.execute(
-            "SELECT DISTINCT department FROM classes WHERE department IS NOT NULL AND TRIM(department) <> '' ORDER BY department"
-        ).fetchall()
-    ]
+    # Use fixed years and departments to match classes and faculty pages
+    initial_years = [1, 2, 3, 4]
+    initial_departments = ['CS', 'IT', 'ECS', 'AUTO', 'MECH', 'EXTC']
     return render_template(
         "timetable.html",
         initial_years=initial_years,

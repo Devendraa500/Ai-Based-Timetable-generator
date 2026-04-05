@@ -23,6 +23,7 @@
                 <option value="ECS">ECS</option>
                 <option value="AUTO">AUTO</option>
                 <option value="MECH">MECH</option>
+                <option value="EXTC">EXTC</option>
             </select>
         </div>
     </div>
@@ -96,7 +97,7 @@ function selectedUnavailable(){
 }
 function required(id, label){ const v=(document.getElementById(id).value||'').trim(); if(!v) throw new Error(label+' is required.'); return v; }
 function resetUnavailable(){ document.querySelectorAll('.unavailable-check').forEach(x=>x.checked=false); }
-const FIXED_DEPTS = ['', 'CS', 'IT', 'ECS', 'AUTO', 'MECH'];
+const FIXED_DEPTS = ['', 'CS', 'IT', 'ECS', 'AUTO', 'MECH', 'EXTC'];
 function resetFacultyForm(){
     document.getElementById('faculty_edit_id').value='';
     document.getElementById('name').value='';

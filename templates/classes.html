@@ -38,6 +38,7 @@
                 <option value="ECS">ECS</option>
                 <option value="AUTO">AUTO</option>
                 <option value="MECH">MECH</option>
+                <option value="EXTC">EXTC</option>
             </select>
             <div class="d-flex gap-2">
                 <button class="btn btn-primary" onclick="saveClass()">Save Class</button>
@@ -87,7 +88,7 @@ let classCache = [];
 let batchCache = [];
 
 const ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
-const FIXED_DEPTS = ['', 'CS', 'IT', 'ECS', 'AUTO', 'MECH'];
+const FIXED_DEPTS = ['', 'CS', 'IT', 'ECS', 'AUTO', 'MECH', 'EXTC'];
 
 function showError(err){ alert(err?.message || err || "Request failed."); }
 async function postJSON(url, payload){
