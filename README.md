@@ -79,7 +79,37 @@ http://127.0.0.1:5000
 
 ---
 
-## 📈 Results
+## � Deployment on Render
+
+This application can be deployed on Render for free hosting.
+
+### Steps to Deploy:
+
+1. **Fork/Clone the Repository:**
+   - Ensure your code is in a Git repository.
+
+2. **Create a Render Account:**
+   - Sign up at [render.com](https://render.com).
+
+3. **Create a New Web Service:**
+   - Connect your GitHub repository.
+   - Set the runtime to Python.
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `gunicorn app:app`
+
+4. **Environment Variables:**
+   - Set the following environment variables in Render:
+     - `OPENAI_API_KEY`: Your OpenAI API key
+     - `GOOGLE_API_KEY`: Your Google API key (for Gemini)
+     - `APP_SECRET`: A secret key for Flask sessions
+
+5. **Deploy:**
+   - Render will automatically build and deploy your app.
+   - The app will be available at the provided URL.
+
+**Note:** Since the database is file-based (DuckDB), it will reset on each deploy. For persistent data, consider using Render's PostgreSQL database and modifying the code accordingly.
+
+---
 - Successfully generates dynamic, conflict-free timetables  
 - Validates:
   - Faculty conflicts  
