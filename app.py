@@ -3982,6 +3982,9 @@ def manual_edit_slot():
 def request_entity_too_large(_e):
     return jsonify({"error": "File too large (max 10 MB)"}), 413
 
+@app.route('/info')
+def info():
+    return render_template('info.html')
 
 init_db()
 
