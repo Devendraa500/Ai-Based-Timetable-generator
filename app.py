@@ -2901,10 +2901,23 @@ def delete_batch():
 @app.route("/get_years")
 @login_required
 def get_years():
-    class_years = [r[0] for r in con.execute("SELECT DISTINCT year FROM classes").fetchall()]
-    timetable_years = [r[0] for r in con.execute("SELECT DISTINCT year FROM timetable").fetchall()]
-    years = sorted({int(y) for y in class_years + timetable_years if y is not None})
-    return jsonify(years)
+    try:
+        class_years = [r[0] for r in con.execute("SELECT DISTINCT year FROM classes").fetchall()]
+        timetable_years = [r[0] for r in con.execute("SELECT DISTINCT year FROM timetable").fetchall()]
+        years_set = set()
+        for y in class_years + timetable_years:
+            if y is None:
+                continue
+            try:
+                years_set.add(int(y))
+            except (ValueError, TypeError):
+                m = re.search(r'\d+', str(y))
+                if m:
+                    years_set.add(int(m.group(0)))
+        years = sorted(years_set) if years_set else [1, 2, 3, 4]
+        return jsonify(years)
+    except Exception:
+        return jsonify([1, 2, 3, 4])
 
 
 @app.route("/get_departments")

@@ -1,38 +1,43 @@
 {% extends "base.html" %}
-{% block content %}
-<h3 class="mb-1">Classes and Division Batches</h3>
-<div class="muted mb-3">Add, edit, or delete class divisions and lab batches.</div>
+{% block title %}classes — ai timetable{% endblock %}
 
-<div class="row g-3">
-    <div class="col-lg-6">
-        <div class="card-box">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0">Class Division</h5>
-                <!--<span id="classModeBadge" class="badge text-bg-primary">New</span>-->
+{% block content %}
+<div class="section-header reveal-up">
+    <h3>classes and division batches</h3>
+    <div class="section-desc">add, edit, or delete class divisions and lab batches</div>
+</div>
+
+<div class="grid grid-2 mb-lg">
+    <!-- Class Division Form -->
+    <div class="panel reveal-up">
+        <div class="panel-header">
+            <div class="panel-title">class division</div>
+        </div>
+        <input type="hidden" id="class_edit_id">
+        <div class="form-row form-row-3 mb-md">
+            <div class="form-group">
+                <label class="form-label" for="year">year</label>
+                <select id="year" class="form-select form-input">
+                    <option value="">select year</option>
+                    <option value="1">I</option>
+                    <option value="2">II</option>
+                    <option value="3">III</option>
+                    <option value="4">IV</option>
+                </select>
             </div>
-            <input type="hidden" id="class_edit_id">
-            <div class="row g-2 mb-2">
-                <div class="col-md-4">
-                    <label for="year" class="form-label small mb-0">Year</label>
-                    <select id="year" class="form-select">
-                        <option value="">Select year</option>
-                        <option value="1">I</option>
-                        <option value="2">II</option>
-                        <option value="3">III</option>
-                        <option value="4">IV</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label for="division" class="form-label small mb-0">Division</label>
-                    <input id="division" class="form-control" placeholder="Division">
-                </div>
-                <div class="col-md-4">
-                    <label for="strength" class="form-label small mb-0">Strength</label>
-                    <input id="strength" type="number" min="1" class="form-control" value="60" placeholder="Strength">
-                </div>
+            <div class="form-group">
+                <label class="form-label" for="division">division</label>
+                <input id="division" class="form-input" placeholder="e.g. A, B">
             </div>
-            <select id="dept" class="form-select mb-3">
-                <option value="">Select Department</option>
+            <div class="form-group">
+                <label class="form-label" for="strength">strength</label>
+                <input id="strength" type="number" min="1" class="form-input" value="60">
+            </div>
+        </div>
+        <div class="form-group mb-lg">
+            <label class="form-label" for="dept">department</label>
+            <select id="dept" class="form-select form-input">
+                <option value="">select department</option>
                 <option value="CS">CS</option>
                 <option value="IT">IT</option>
                 <option value="ECS">ECS</option>
@@ -40,46 +45,57 @@
                 <option value="MECH">MECH</option>
                 <option value="EXTC">EXTC</option>
             </select>
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary" onclick="saveClass()">Save Class</button>
-                <button class="btn btn-outline-secondary" onclick="resetClassForm()">Clear</button>
-            </div>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="saveClass()">save class</button>
+            <button class="btn" onclick="resetClassForm()">clear</button>
         </div>
     </div>
-    <div class="col-lg-6">
-        <div class="card-box">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0">Batch</h5>
-                <!--<span id="batchModeBadge" class="badge text-bg-primary">New</span>-->
-            </div>
-            <input type="hidden" id="batch_edit_id">
-            <select id="class_id" class="form-select mb-2">
-                <option value="">Select class division</option>
+
+    <!-- Batch Form -->
+    <div class="panel reveal-up">
+        <div class="panel-header">
+            <div class="panel-title">batch</div>
+        </div>
+        <input type="hidden" id="batch_edit_id">
+        <div class="form-group mb-md">
+            <label class="form-label" for="class_id">parent class</label>
+            <select id="class_id" class="form-select form-input">
+                <option value="">select class division</option>
             </select>
-            <div class="row g-2 mb-3">
-                <div class="col-md-6"><input id="batch_name" class="form-control" placeholder="Batch name, e.g. B1"></div>
-                <div class="col-md-6"><input id="batch_size" type="number" min="1" class="form-control" value="30" placeholder="Batch size"></div>
+        </div>
+        <div class="form-row form-row-2 mb-lg">
+            <div class="form-group">
+                <label class="form-label" for="batch_name">batch name</label>
+                <input id="batch_name" class="form-input" placeholder="e.g. B1">
             </div>
-            <div class="d-flex gap-2">
-                <button class="btn btn-outline-primary" onclick="saveBatch()">Save Batch</button>
-                <button class="btn btn-outline-secondary" onclick="resetBatchForm()">Clear</button>
+            <div class="form-group">
+                <label class="form-label" for="batch_size">batch size</label>
+                <input id="batch_size" type="number" min="1" class="form-input" value="30">
             </div>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="saveBatch()">save batch</button>
+            <button class="btn" onclick="resetBatchForm()">clear</button>
         </div>
     </div>
 </div>
 
-<div class="row g-3 mt-1">
-    <div class="col-lg-6">
-        <div class="card-box">
-            <h5>Configured Classes</h5>
-            <div id="list" class="mt-2"></div>
+<div class="grid grid-2">
+    <!-- Class List -->
+    <div class="panel reveal-up">
+        <div class="panel-header">
+            <div class="panel-title">configured classes</div>
         </div>
+        <div id="list"></div>
     </div>
-    <div class="col-lg-6">
-        <div class="card-box">
-            <h5>Configured Batches</h5>
-            <div id="batchList" class="mt-2"></div>
+
+    <!-- Batch List -->
+    <div class="panel reveal-up">
+        <div class="panel-header">
+            <div class="panel-title">configured batches</div>
         </div>
+        <div id="batchList"></div>
     </div>
 </div>
 
@@ -111,16 +127,12 @@ function resetClassForm(){
     const deptSel = document.getElementById('dept');
     [...deptSel.options].forEach(o => { if (!FIXED_DEPTS.includes(o.value)) o.remove(); });
     deptSel.value = '';
-    /**document.getElementById('classModeBadge').textContent = 'New';
-    document.getElementById('classModeBadge').className = 'badge text-bg-primary';**/
 }
 function resetBatchForm(){
     document.getElementById('batch_edit_id').value = '';
     document.getElementById('class_id').value = '';
     document.getElementById('batch_name').value = '';
     document.getElementById('batch_size').value = '30';
-    /**document.getElementById('batchModeBadge').textContent = 'New';
-    document.getElementById('batchModeBadge').className = 'badge text-bg-primary';**/
 }
 async function saveClass(){
     try {
@@ -130,7 +142,6 @@ async function saveClass(){
             strength: parseInt(requireValue('strength','Division strength')),
             department: requireValue('dept','Department')
         };
-        // Derive a name from dept for compatibility with backend
         payload.name = payload.department;
         const editId = document.getElementById('class_edit_id').value;
         await postJSON(editId ? '/update_class' : '/add_class', editId ? {...payload, id: parseInt(editId)} : payload);
@@ -169,8 +180,6 @@ function startEditClass(id){
     document.getElementById('strength').value = c.strength;
     ensureClassDeptOption(c.department);
     document.getElementById('dept').value = c.department;
-    /**document.getElementById('classModeBadge').textContent = 'Editing';
-    document.getElementById('classModeBadge').className = 'badge text-bg-warning';**/
     window.scrollTo({top: 0, behavior: 'smooth'});
 }
 async function deleteClass(id){
@@ -190,8 +199,6 @@ function startEditBatch(id){
     document.getElementById('class_id').value = b.class_id;
     document.getElementById('batch_name').value = b.batch_name;
     document.getElementById('batch_size').value = b.size;
-    /**document.getElementById('batchModeBadge').textContent = 'Editing';
-    document.getElementById('batchModeBadge').className = 'badge text-bg-warning';**/
     window.scrollTo({top: 0, behavior: 'smooth'});
 }
 async function deleteBatch(id){
@@ -208,47 +215,50 @@ async function deleteBatch(id){
 function loadClasses(){
     return fetch('/get_classes').then(r=>r.json()).then(d=>{
         classCache = d;
-        document.getElementById('class_id').innerHTML = `<option value="">Select class division</option>` + d.map(c=>{
+        document.getElementById('class_id').innerHTML = `<option value="">select class division</option>` + d.map(c=>{
             const deptLabel = c.department ? ` ${c.department}` : '';
             return `<option value="${c.id}">${c.display_name}${deptLabel}</option>`;
         }).join('');
+        if (!d.length) {
+            document.getElementById('list').innerHTML = '<div class="empty-state">no classes added yet</div>';
+            return;
+        }
         document.getElementById('list').innerHTML = d.map(c=>`
-            <div class="border rounded-3 p-3 mb-2">
-                <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div>
-                        <div class="fw-semibold">${c.display_name}</div>
-                        <div class="small text-secondary">${c.department}</div>
-                        <div class="small">Year: ${ROMAN[c.year] || c.year} &nbsp;|&nbsp; Strength: ${c.strength}</div>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-primary" onclick="startEditClass(${c.id})">Edit</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteClass(${c.id})">Delete</button>
-                    </div>
+            <div class="list-item">
+                <div>
+                    <div class="item-name">${c.display_name}</div>
+                    <div class="item-meta">${c.department} · year: ${ROMAN[c.year] || c.year} · strength: ${c.strength}</div>
+                </div>
+                <div class="item-actions">
+                    <button class="btn btn-sm" onclick="startEditClass(${c.id})">edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteClass(${c.id})">delete</button>
                 </div>
             </div>
-        `).join('') || `<div class="muted">No classes added yet.</div>`;
+        `).join('');
     });
 }
 function loadBatches(){
     return fetch('/get_batches').then(r=>r.json()).then(d=>{
         batchCache = d;
+        if (!d.length) {
+            document.getElementById('batchList').innerHTML = '<div class="empty-state">no batches added yet</div>';
+            return;
+        }
         document.getElementById('batchList').innerHTML = d.map(b=>{
             const classLabel = `Y${ROMAN[b.year] || b.year} ${b.division || b.class_name}`;
             const deptLabel = b.department ? ` ${b.department}` : '';
             return `
-            <div class="border rounded-3 p-3 mb-2">
-                <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div>
-                        <div class="fw-semibold">${classLabel}${deptLabel} - ${b.batch_name}</div>
-                        <div class="small">Size: ${b.size}</div>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-primary" onclick="startEditBatch(${b.id})">Edit</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteBatch(${b.id})">Delete</button>
-                    </div>
+            <div class="list-item">
+                <div>
+                    <div class="item-name">${classLabel}${deptLabel} — ${b.batch_name}</div>
+                    <div class="item-meta">size: ${b.size}</div>
+                </div>
+                <div class="item-actions">
+                    <button class="btn btn-sm" onclick="startEditBatch(${b.id})">edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteBatch(${b.id})">delete</button>
                 </div>
             </div>
-        `}).join('') || `<div class="muted">No batches added yet.</div>`;
+        `}).join('');
     });
 }
 async function loadAll(){

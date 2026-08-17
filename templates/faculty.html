@@ -1,23 +1,28 @@
 {% extends "base.html" %}
-{% block content %}
-<h3 class="mb-1">Faculty Management</h3>
-<div class="muted mb-3">Configure allowed years, workload limits, and unavailable slots used by the scheduler.</div>
+{% block title %}teachers — ai timetable{% endblock %}
 
-<div class="card-box mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="mb-0">Faculty Profile</h5>
-        <!--<span id="facultyModeBadge" class="badge text-bg-primary">New</span>-->
+{% block content %}
+<div class="section-header reveal-up">
+    <h3>faculty management</h3>
+    <div class="section-desc">configure allowed years, workload limits, and unavailable slots used by the scheduler</div>
+</div>
+
+<!-- Faculty Form -->
+<div class="panel mb-lg reveal-up">
+    <div class="panel-header">
+        <div class="panel-title">faculty profile</div>
     </div>
     <input type="hidden" id="faculty_edit_id">
-    <div class="row g-2 mb-2">
-        <div class="col-md-6">
-            <label for="name" class="form-label small mb-0">Faculty name</label>
-            <input id="name" class="form-control" placeholder="Faculty name">
+
+    <div class="form-row form-row-2 mb-md">
+        <div class="form-group">
+            <label class="form-label" for="name">faculty name</label>
+            <input id="name" class="form-input" placeholder="enter faculty name">
         </div>
-        <div class="col-md-6">
-            <label for="dept" class="form-label small mb-0">Department</label>
-            <select id="dept" class="form-select">
-                <option value="">Select Department</option>
+        <div class="form-group">
+            <label class="form-label" for="dept">department</label>
+            <select id="dept" class="form-select form-input">
+                <option value="">select department</option>
                 <option value="CS">CS</option>
                 <option value="IT">IT</option>
                 <option value="ECS">ECS</option>
@@ -27,36 +32,40 @@
             </select>
         </div>
     </div>
-    <div class="mb-2">
-        <label for="subjects" class="form-label small mb-0">Handled subjects</label>
-        <input id="subjects" class="form-control" placeholder="Comma separated, e.g. DS, DBMS">
+
+    <div class="form-group mb-md">
+        <label class="form-label" for="subjects">handled subjects</label>
+        <input id="subjects" class="form-input" placeholder="comma separated, e.g. DS, DBMS">
     </div>
-    <div class="row g-2 mb-3">
-        <div class="col-md-6">
-            <label for="max_day" class="form-label small mb-0">Max slots per day</label>
-            <input id="max_day" type="number" min="1" max="6" class="form-control" value="4" placeholder="e.g. 4">
+
+    <div class="form-row form-row-2 mb-md">
+        <div class="form-group">
+            <label class="form-label" for="max_day">max slots per day</label>
+            <input id="max_day" type="number" min="1" max="6" class="form-input" value="4" placeholder="e.g. 4">
         </div>
-        <div class="col-md-6">
-            <label for="max_week" class="form-label small mb-0">Max slots per week</label>
-            <input id="max_week" type="number" min="1" max="30" class="form-control" value="20" placeholder="e.g. 20">
-        </div>
-    </div>
-    <div class="mb-3">
-        <label class="form-label fw-semibold">Allowed years</label>
-        <div>
-            <label class="me-3"><input type="checkbox" class="year-check" value="1" checked> 1st</label>
-            <label class="me-3"><input type="checkbox" class="year-check" value="2" checked> 2nd</label>
-            <label class="me-3"><input type="checkbox" class="year-check" value="3" checked> 3rd</label>
-            <label class="me-3"><input type="checkbox" class="year-check" value="4" checked> 4th</label>
+        <div class="form-group">
+            <label class="form-label" for="max_week">max slots per week</label>
+            <input id="max_week" type="number" min="1" max="30" class="form-input" value="20" placeholder="e.g. 20">
         </div>
     </div>
-    <div class="mb-3">
-        <label class="form-label fw-semibold">Unavailable slots</label>
-        <div class="table-responsive">
-            <table class="table table-bordered align-middle text-center mb-0 small">
+
+    <div class="form-group mb-md">
+        <label class="form-label">allowed years</label>
+        <div class="flex gap-lg flex-wrap" style="padding-top:4px">
+            <label class="flex items-center gap-xs text-sm"><input type="checkbox" class="year-check" value="1" checked> 1st year</label>
+            <label class="flex items-center gap-xs text-sm"><input type="checkbox" class="year-check" value="2" checked> 2nd year</label>
+            <label class="flex items-center gap-xs text-sm"><input type="checkbox" class="year-check" value="3" checked> 3rd year</label>
+            <label class="flex items-center gap-xs text-sm"><input type="checkbox" class="year-check" value="4" checked> 4th year</label>
+        </div>
+    </div>
+
+    <div class="form-group mb-lg">
+        <label class="form-label">unavailable slots</label>
+        <div class="table-wrap">
+            <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Day / Slot</th>
+                        <th>day / slot</th>
                         {% for slot in ["09:00-10:00","10:00-11:00","11:00-12:00","13:00-14:00","14:00-15:00","15:00-16:00"] %}
                         <th>{{ slot }}</th>
                         {% endfor %}
@@ -65,9 +74,9 @@
                 <tbody>
                     {% for day in ["Monday","Tuesday","Wednesday","Thursday","Friday"] %}
                     <tr>
-                        <th>{{ day }}</th>
+                        <th style="text-align:left; padding:8px 16px; font-weight:500; color:var(--text-primary)">{{ day }}</th>
                         {% for slot_idx in range(6) %}
-                        <td><input type="checkbox" class="unavailable-check" data-day="{{ day }}" data-slot="{{ slot_idx }}"></td>
+                        <td style="text-align:center"><input type="checkbox" class="unavailable-check" data-day="{{ day }}" data-slot="{{ slot_idx }}"></td>
                         {% endfor %}
                     </tr>
                     {% endfor %}
@@ -75,15 +84,19 @@
             </table>
         </div>
     </div>
-    <div class="d-flex gap-2">
-        <button class="btn btn-primary" onclick="saveFaculty()">Save Faculty</button>
-        <button class="btn btn-outline-secondary" onclick="resetFacultyForm()">Clear</button>
+
+    <div class="btn-group">
+        <button class="btn btn-primary" onclick="saveFaculty()">save faculty</button>
+        <button class="btn" onclick="resetFacultyForm()">clear</button>
     </div>
 </div>
 
-<div class="card-box">
-    <h5>Faculty List</h5>
-    <div id="list" class="mt-2"></div>
+<!-- Faculty List -->
+<div class="panel reveal-up">
+    <div class="panel-header">
+        <div class="panel-title">faculty list</div>
+    </div>
+    <div id="list"></div>
 </div>
 
 <script>
@@ -109,8 +122,6 @@ function resetFacultyForm(){
     document.getElementById('max_week').value='20';
     document.querySelectorAll('.year-check').forEach(x=>x.checked=true);
     resetUnavailable();
-    /**document.getElementById('facultyModeBadge').textContent='New';
-    document.getElementById('facultyModeBadge').className='badge text-bg-primary';**/
 }
 function fillUnavailable(items){
     resetUnavailable();
@@ -164,8 +175,6 @@ function startEditFaculty(id){
     document.getElementById('max_week').value = f.max_week;
     document.querySelectorAll('.year-check').forEach(x=>x.checked = (f.allowed_years || []).includes(parseInt(x.value, 10)));
     fillUnavailable(f.unavailable || []);
-    /**document.getElementById('facultyModeBadge').textContent='Editing';
-    document.getElementById('facultyModeBadge').className='badge text-bg-warning';**/
     window.scrollTo({top:0, behavior:'smooth'});
 }
 async function deleteFaculty(id){
@@ -183,23 +192,26 @@ async function deleteFaculty(id){
 function loadFaculty(){
     fetch('/get_faculty').then(res=>res.json()).then(data=>{
         facultyCache = data;
+        if (!data.length) {
+            document.getElementById('list').innerHTML = '<div class="empty-state">no faculty added yet — create your first entry above</div>';
+            return;
+        }
         document.getElementById('list').innerHTML = data.map(f=>`
-            <div class="border rounded-3 p-3 mb-2">
-                <div class="d-flex justify-content-between gap-2 align-items-start">
-                    <div>
-                        <div class="fw-semibold">${f.name}</div>
-                        <div class="small text-secondary">${f.department}</div>
-                        <div class="small">Allowed years: ${(f.allowed_years || []).map(y => ROMAN_YEAR[y] || y).join(', ') || '—'} | Daily max: ${f.max_day} | Weekly max: ${f.max_week}</div>
-                        <div class="small">Subjects: ${(f.subjects || []).join(', ') || '—'}</div>
-                        <div class="small">Unavailable slots: ${(f.unavailable || []).map(x=>`${x.day} ${slotLabels[x.slot_index] || ('Slot ' + (x.slot_index+1))}`).join(', ') || 'None'}</div>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-primary" onclick="startEditFaculty(${f.id})">Edit</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteFaculty(${f.id})">Delete</button>
+            <div class="list-item">
+                <div>
+                    <div class="item-name">${f.name}</div>
+                    <div class="item-meta">
+                        ${f.department} · years: ${(f.allowed_years || []).map(y => ROMAN_YEAR[y] || y).join(', ') || '—'} · daily max: ${f.max_day} · weekly max: ${f.max_week}<br>
+                        subjects: ${(f.subjects || []).join(', ') || '—'}<br>
+                        unavailable: ${(f.unavailable || []).map(x=>`${x.day} ${slotLabels[x.slot_index] || ('Slot ' + (x.slot_index+1))}`).join(', ') || 'none'}
                     </div>
                 </div>
+                <div class="item-actions">
+                    <button class="btn btn-sm" onclick="startEditFaculty(${f.id})">edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteFaculty(${f.id})">delete</button>
+                </div>
             </div>
-        `).join('') || `<div class="muted">No faculty added yet.</div>`;
+        `).join('');
     });
 }
 resetFacultyForm();

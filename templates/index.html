@@ -1,138 +1,17 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Smart Timetable Assistant</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .timetable-cell {
-            height: 80px;
-            vertical-align: middle;
-            text-align: center;
-            font-size: 14px;
-        }
-        .empty-cell {
-            background-color: #f8f9fa;
-            color: #999;
-        }
-        .filled-cell {
-            background-color: #d1e7dd;
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ai timetable — redirecting</title>
+    <meta http-equiv="refresh" content="0;url=/dashboard">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body class="bg-light">
-
-<div class="container mt-5">
-    <h2 class="text-center mb-4">Smart Timetable Assistant</h2>
-
-    <div class="card p-4 shadow">
-
-        <input type="text" id="inputText" class="form-control mb-3"
-               placeholder="Enter constraint...">
-
-        <button id="applyBtn" class="btn btn-primary mb-2" onclick="processInput()">Apply</button>
-        <button class="btn btn-success" onclick="loadTimetable()">Refresh Timetable</button>
-
-        <!-- Loader -->
-        <div id="loading" class="mt-3" style="display:none;">
-            <div class="d-flex align-items-center">
-                <div class="spinner-border text-primary me-2"></div>
-                <strong>Processing with AI...</strong>
-            </div>
-        </div>
-
-        <div id="output" class="mt-3"></div>
-
-        <!-- Grid Timetable -->
-        <div id="timetable" class="mt-4"></div>
-
+<body>
+    <div style="display:flex; align-items:center; justify-content:center; height:100vh; flex-direction:column; gap:16px;">
+        <div style="font-size:24px; font-weight:700; letter-spacing:-0.02em;">ai timetable®</div>
+        <div class="text-muted text-sm">redirecting to dashboard...</div>
     </div>
-</div>
-
-<script>
-const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const times = ["Morning", "Afternoon"];
-
-function processInput() {
-    const text = document.getElementById("inputText").value;
-
-    document.getElementById("loading").style.display = "block";
-    document.getElementById("applyBtn").disabled = true;
-
-    fetch('/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-    })
-    .then(res => res.json())
-    .then(data => {
-        let alertType = data.conflict ? "danger" : "info";
-
-        document.getElementById("output").innerHTML =
-            `<div class="alert alert-${alertType}">
-                <b>Parsed:</b>
-                <pre>${JSON.stringify(data.parsed, null, 2)}</pre>
-                <b>Result:</b> ${data.message}
-                <br><br>
-                <b>AI Response:</b>
-                <div class="mt-2 p-2 bg-light border rounded">
-                    ${data.llm || "—"}
-                </div>
-            </div>`;
-
-        loadTimetable(); 
-    })
-    .finally(() => {
-        document.getElementById("loading").style.display = "none";
-        document.getElementById("applyBtn").disabled = false;
-    });
-}
-
-function loadTimetable() {
-    fetch('/timetable')
-    .then(res => res.json())
-    .then(data => {
-
-        let table = `
-        <table class="table table-bordered">
-            <thead class="table-dark">
-                <tr>
-                    <th>Time / Day</th>
-                    ${days.map(d => `<th>${d}</th>`).join("")}
-                </tr>
-            </thead>
-            <tbody>
-        `;
-
-        times.forEach(time => {
-            table += `<tr><th>${time}</th>`;
-
-            days.forEach(day => {
-                let entry = data.find(d => d.day === day && d.time === time);
-
-                if (entry) {
-                    table += `
-                    <td class="timetable-cell filled-cell">
-                        <b>${entry.faculty}</b><br>
-                        <small>${entry.subject}</small>
-                    </td>`;
-                } else {
-                    table += `
-                    <td class="timetable-cell empty-cell">Free</td>`;
-                }
-            });
-
-            table += `</tr>`;
-        });
-
-        table += "</tbody></table>";
-
-        document.getElementById("timetable").innerHTML = table;
-    });
-}
-
-// Load on page start
-window.onload = loadTimetable;
-</script>
-
+    <script>window.location.href = '/dashboard';</script>
 </body>
 </html>

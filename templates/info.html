@@ -1,102 +1,115 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Project Info</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
+{% extends "base.html" %}
+{% block title %}project info — ai timetable{% endblock %}
 
-<body class="bg-light">
-
-<div class="container mt-5">
-
-    <h1 class="text-center mb-4">Project Information</h1>
-
-    <div class="card shadow p-4">
-
-        <!-- About Project -->
-        <h4>About the Project</h4>
-        <p>
-            The AI-Based Timetable Generator is designed to automate scheduling of classes,
-            teachers, and rooms efficiently using intelligent logic and constraints.
-        </p>
-
-        <!-- Acknowledgement -->
-        <h4 class="mt-4">Acknowledgement</h4>
-        <p>
-            This project was developed as part of learning at 
-            <b>Pillai College of Engineering (PCE)</b>.
-        </p>
-
-        <!-- Team Members -->
-        <h4 class="mt-4">Team Members & Contributions</h4>
-
-        <ul>
-            <li><b>Devendraa Wader</b> – AI & Backend 
-                <br><small>Worked on timetable logic, AI stability, export features</small>
-            </li>
-
-            <li><b>Tanvi Ragesh</b> – Feature Development  
-                <br><small>Schedule fixes, import UI, README updates</small>
-            </li>
-
-            <li><b>Sakshi Walke</b> – UI & Pages  
-                <br><small>Classes & rooms updates, merge conflict fixes</small>
-            </li>
-
-            <li><b>Devang Wani</b> – UI Enhancements  
-                <br><small>Dropdowns, department selection, UI improvements</small>
-            </li>
-
-            <li><b>Joel Varghese</b> – Feature Implementation  
-                <br><small>Department/year dropdown functionality</small>
-            </li>
-
-            <li><b>Ansh Thakur</b> – Testing & Updates  
-                <br><small>Initial testing and updates</small>
-            </li>
-            <li><b>Vedant Yeole</b> – Testing & Updates  
-                <br><small>Added Backend,Footers and Member Info</small>
-            </li>
-            <li><b>Ronit Vaskar</b> – Testing & Updates  
-                <br><small>Updated Team member names and updated README to have proper format</small>
-            </li>
-            <li><b>Manav Vanavne</b> – Testing & Updates  
-                <br><small>Updated info page to include yt video link and updated README to include all the aspects</small>
-            </li>
-        </ul>
-
-        <!-- Recent Updates -->
-        <h4 class="mt-4">Recent Updates</h4>
-
-        <ul>
-            <li>✔ Fixed timetable errors and scheduling issues</li>
-            <li>✔ Added department & year dropdowns</li>
-            <li>✔ Improved UI and dark mode</li>
-            <li>✔ Added AI-based scheduling improvements</li>
-            <li>✔ Resolved merge conflicts and optimized performance</li>
-        </ul>
-
-        <!-- GitHub -->
-        <h4 class="mt-4">GitHub Repository</h4>
-        <p>
-            <a href="https://github.com/Devendraa500/Ai-Based-Timetable-generator" target="_blank">
-                View Project on GitHub
-            </a>
-        </p>
-
-        <h4 class="mt-4">Youtube Video</h4>
-        <p>
-            <a href="https://youtu.be/KW9DSQKsucY" target="_blank">
-                View Project Demo on Youtube
-            </a>
-        </p>
-
-        <!-- Back Button -->
-        <a href="/dashboard" class="btn btn-primary mt-3">← Back to Dashboard</a>
-
-    </div>
-
+{% block content %}
+<div class="section-header reveal-up">
+    <h3>project information</h3>
+    <div class="section-desc">about the ai-based timetable generator</div>
 </div>
 
-</body>
-</html>
+<!-- About -->
+<div class="panel mb-lg reveal-up">
+    <div class="info-section">
+        <h4>about the project</h4>
+        <p class="text-secondary" style="line-height:1.7">
+            the ai-based timetable generator is designed to automate scheduling of classes,
+            teachers, and rooms efficiently using intelligent logic and constraints. it handles
+            complex multi-year, multi-department scheduling with batch-wise lab allocation,
+            faculty workload balancing, and room capacity enforcement.
+        </p>
+    </div>
+
+    <div class="info-section">
+        <h4>acknowledgement</h4>
+        <p class="text-secondary">
+            this project was developed as part of learning at
+            <a href="https://www.pce.ac.in/" target="_blank"><strong>pillai college of engineering (pce)</strong></a>.
+        </p>
+    </div>
+</div>
+
+<!-- Team Members -->
+<div class="panel mb-lg reveal-up">
+    <div class="info-section" style="margin-bottom:0">
+        <h4>team members & contributions</h4>
+        <div class="team-grid">
+            <div class="team-card">
+                <div class="member-name">devendraa wader</div>
+                <div class="member-role">ai & backend</div>
+                <div class="member-desc">timetable logic, ai stability, export features</div>
+            </div>
+            <div class="team-card">
+                <div class="member-name">tanvi ragesh</div>
+                <div class="member-role">feature development</div>
+                <div class="member-desc">schedule fixes, import ui, readme updates</div>
+            </div>
+            <div class="team-card">
+                <div class="member-name">sakshi walke</div>
+                <div class="member-role">ui & pages</div>
+                <div class="member-desc">classes & rooms updates, merge conflict fixes</div>
+            </div>
+            <div class="team-card">
+                <div class="member-name">devang wani</div>
+                <div class="member-role">ui enhancements</div>
+                <div class="member-desc">dropdowns, department selection, ui improvements</div>
+            </div>
+            <div class="team-card">
+                <div class="member-name">joel varghese</div>
+                <div class="member-role">feature implementation</div>
+                <div class="member-desc">department/year dropdown functionality</div>
+            </div>
+            <div class="team-card">
+                <div class="member-name">ansh thakur</div>
+                <div class="member-role">testing & updates</div>
+                <div class="member-desc">initial testing and updates</div>
+            </div>
+            <div class="team-card">
+                <div class="member-name">vedant yeole</div>
+                <div class="member-role">testing & updates</div>
+                <div class="member-desc">backend, footers and member info</div>
+            </div>
+            <div class="team-card">
+                <div class="member-name">ronit vaskar</div>
+                <div class="member-role">testing & updates</div>
+                <div class="member-desc">team member names and readme formatting</div>
+            </div>
+            <div class="team-card">
+                <div class="member-name">manav vanavne</div>
+                <div class="member-role">testing & updates</div>
+                <div class="member-desc">info page, youtube video link, readme updates</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Updates & Links -->
+<div class="grid grid-2">
+    <div class="panel reveal-up">
+        <div class="info-section" style="margin-bottom:0">
+            <h4>recent updates</h4>
+            <div class="text-secondary text-sm" style="line-height:2">
+                ✓ fixed timetable errors and scheduling issues<br>
+                ✓ added department & year dropdowns<br>
+                ✓ improved ui and dark mode<br>
+                ✓ added ai-based scheduling improvements<br>
+                ✓ resolved merge conflicts and optimized performance
+            </div>
+        </div>
+    </div>
+    <div class="panel reveal-up">
+        <div class="info-section mb-lg">
+            <h4>github repository</h4>
+            <a href="https://github.com/Devendraa500/Ai-Based-Timetable-generator" target="_blank" style="text-underline-offset:3px">
+                view project on github →
+            </a>
+        </div>
+        <div class="info-section mb-lg">
+            <h4>youtube demo</h4>
+            <a href="https://youtu.be/KW9DSQKsucY" target="_blank" style="text-underline-offset:3px">
+                view project demo on youtube →
+            </a>
+        </div>
+        <a href="/dashboard" class="btn btn-primary">← back to dashboard</a>
+    </div>
+</div>
+{% endblock %}

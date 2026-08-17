@@ -1,47 +1,76 @@
 {% extends "base.html" %}
-{% block content %}
-<h3 class="mb-1">Subject Management</h3>
-<div class="muted mb-3">Theory is fixed to 1 hour and labs are fixed to 2 continuous hours.</div>
+{% block title %}subjects — ai timetable{% endblock %}
 
-<div class="card-box mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="mb-0">Subject</h5>
-        <!--<span id="subjectModeBadge" class="badge text-bg-primary">New</span>-->
+{% block content %}
+<div class="section-header reveal-up">
+    <h3>subject management</h3>
+    <div class="section-desc">theory is fixed to 1 hour and labs are fixed to 2 continuous hours</div>
+</div>
+
+<!-- Subject Form -->
+<div class="panel mb-lg reveal-up">
+    <div class="panel-header">
+        <div class="panel-title">subject</div>
     </div>
     <input type="hidden" id="subject_edit_id">
-    <div class="row g-2 mb-2">
-        <div class="col-md-6"><input id="name" class="form-control" placeholder="Subject name"></div>
-        <div class="col-md-6"><input id="code" class="form-control" placeholder="Subject code"></div>
+
+    <div class="form-row form-row-2 mb-md">
+        <div class="form-group">
+            <label class="form-label" for="name">subject name</label>
+            <input id="name" class="form-input" placeholder="e.g. Data Structures">
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="code">subject code</label>
+            <input id="code" class="form-input" placeholder="e.g. CS301">
+        </div>
     </div>
-    <div class="row g-2 mb-2">
-        <div class="col-md-3">
-            <select id="year" class="form-select">
-                <option value="1">1st Year</option>
-                <option value="2">2nd Year</option>
-                <option value="3">3rd Year</option>
-                <option value="4">4th Year</option>
+
+    <div class="form-row form-row-4 mb-md">
+        <div class="form-group">
+            <label class="form-label" for="year">year</label>
+            <select id="year" class="form-select form-input">
+                <option value="1">1st year</option>
+                <option value="2">2nd year</option>
+                <option value="3">3rd year</option>
+                <option value="4">4th year</option>
             </select>
         </div>
-        <div class="col-md-3">
-            <select id="type" class="form-select" onchange="syncDuration()">
+        <div class="form-group">
+            <label class="form-label" for="type">type</label>
+            <select id="type" class="form-select form-input" onchange="syncDuration()">
                 <option>Theory</option>
                 <option>Lab</option>
             </select>
         </div>
-        <div class="col-md-3"><input id="weekly" type="number" min="1" class="form-control" value="3" placeholder="Sessions/week"></div>
-        <div class="col-md-3"><input id="continuous_slots" type="number" class="form-control" value="1" readonly></div>
+        <div class="form-group">
+            <label class="form-label" for="weekly">sessions / week</label>
+            <input id="weekly" type="number" min="1" class="form-input" value="3">
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="continuous_slots">continuous slots</label>
+            <input id="continuous_slots" type="number" class="form-input" value="1" readonly style="opacity:0.6">
+        </div>
     </div>
-    <select id="faculty" class="form-select mb-2"></select>
-    <div class="small muted mb-3" id="durationHint">Theory lectures are always 1 hour.</div>
-    <div class="d-flex gap-2">
-        <button class="btn btn-success" onclick="saveSubject()">Save Subject</button>
-        <button class="btn btn-outline-secondary" onclick="resetSubjectForm()">Clear</button>
+
+    <div class="form-group mb-md">
+        <label class="form-label" for="faculty">faculty</label>
+        <select id="faculty" class="form-select form-input"></select>
+    </div>
+
+    <div class="text-xs text-muted mb-lg" id="durationHint">theory lectures are always 1 hour.</div>
+
+    <div class="btn-group">
+        <button class="btn btn-primary" onclick="saveSubject()">save subject</button>
+        <button class="btn" onclick="resetSubjectForm()">clear</button>
     </div>
 </div>
 
-<div class="card-box">
-    <h5>Subjects</h5>
-    <div id="list" class="mt-2"></div>
+<!-- Subject List -->
+<div class="panel reveal-up">
+    <div class="panel-header">
+        <div class="panel-title">subjects</div>
+    </div>
+    <div id="list"></div>
 </div>
 
 <script>
@@ -50,7 +79,7 @@ let facultyList = [];
 function syncDuration(){
     const isLab = document.getElementById('type').value === 'Lab';
     document.getElementById('continuous_slots').value = isLab ? '2' : '1';
-    document.getElementById('durationHint').textContent = isLab ? 'Labs are fixed to 2 continuous hours.' : 'Theory lectures are always 1 hour.';
+    document.getElementById('durationHint').textContent = isLab ? 'labs are fixed to 2 continuous hours.' : 'theory lectures are always 1 hour.';
 }
 function req(id, label){ const v=(document.getElementById(id).value||'').trim(); if(!v) throw new Error(label+' is required.'); return v; }
 function resetSubjectForm(){
@@ -62,13 +91,11 @@ function resetSubjectForm(){
     document.getElementById('weekly').value='3';
     syncDuration();
     document.getElementById('faculty').value='';
-    /**document.getElementById('subjectModeBadge').textContent='New';
-    document.getElementById('subjectModeBadge').className='badge text-bg-primary';**/
 }
 function loadFaculty(){
     return fetch('/get_faculty').then(res=>res.json()).then(data=>{
         facultyList = data;
-        document.getElementById('faculty').innerHTML = `<option value="">Select faculty</option>` + data.map(f=>`<option value="${f.name}">${f.name}</option>`).join('');
+        document.getElementById('faculty').innerHTML = `<option value="">select faculty</option>` + data.map(f=>`<option value="${f.name}">${f.name}</option>`).join('');
     });
 }
 async function saveSubject(){
@@ -105,8 +132,6 @@ function startEditSubject(id){
     document.getElementById('weekly').value = s.weekly_sessions;
     syncDuration();
     document.getElementById('faculty').value = s.faculty;
-    /**document.getElementById('subjectModeBadge').textContent='Editing';
-    document.getElementById('subjectModeBadge').className='badge text-bg-warning';**/
     window.scrollTo({top:0, behavior:'smooth'});
 }
 async function deleteSubject(id){
@@ -124,21 +149,22 @@ async function deleteSubject(id){
 function loadSubjects(){
     fetch('/get_subjects').then(res=>res.json()).then(data=>{
         subjectCache = data;
+        if (!data.length) {
+            document.getElementById('list').innerHTML = '<div class="empty-state">no subjects added yet — create your first entry above</div>';
+            return;
+        }
         document.getElementById('list').innerHTML = data.map(s=>`
-            <div class="border rounded-3 p-3 mb-2">
-                <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div>
-                        <div class="fw-semibold">Y${s.year} - ${s.name}</div>
-                        <div class="small">${s.code} | ${s.type} | Faculty: ${s.faculty}</div>
-                        <div class="small">Weekly: ${s.weekly_sessions} | Continuous slots: ${s.continuous_slots}</div>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-primary" onclick="startEditSubject(${s.id})">Edit</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteSubject(${s.id})">Delete</button>
-                    </div>
+            <div class="list-item">
+                <div>
+                    <div class="item-name">Y${s.year} — ${s.name}</div>
+                    <div class="item-meta">${s.code} · ${s.type} · faculty: ${s.faculty} · weekly: ${s.weekly_sessions} · slots: ${s.continuous_slots}</div>
+                </div>
+                <div class="item-actions">
+                    <button class="btn btn-sm" onclick="startEditSubject(${s.id})">edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteSubject(${s.id})">delete</button>
                 </div>
             </div>
-        `).join('') || `<div class="muted">No subjects added yet.</div>`;
+        `).join('');
     });
 }
 Promise.all([loadFaculty()]).then(()=>{ resetSubjectForm(); loadSubjects(); });

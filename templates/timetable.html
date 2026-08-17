@@ -1,216 +1,122 @@
 {% extends "base.html" %}
+{% block title %}schedule — ai timetable{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h3 class="mb-0">Timetable</h3>
-        <div class="muted">Manual edits, AI import preview, version history, rollback, NLP queries, conflict explanations, summaries, and natural-language rules are enabled.</div>
+<!-- Header -->
+<div class="flex justify-between items-center mb-lg flex-wrap gap-md reveal-up">
+    <div class="section-header" style="margin-bottom:0">
+        <h3>timetable</h3>
+        <div class="section-desc">manual edits, ai import preview, version history, rollback, nlp queries, conflict explanations, summaries, and natural-language rules</div>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
-        <select id="departmentSelect" class="form-select" style="min-width:180px;"></select>
-        <select id="yearSelect" class="form-select" style="min-width:180px;"></select>
-        <button class="btn btn-outline-primary" onclick="loadAllForYear()">Refresh</button>
-        <button class="btn btn-outline-secondary" onclick="regenUnlocked()">Regenerate Unlocked</button>
-        <button class="btn btn-outline-secondary" onclick="saveSnapshot()">Save Snapshot</button>
-        <button class="btn btn-success" onclick="downloadCSV()">Export CSV</button>
-        <button class="btn btn-success" onclick="downloadXLSX()">Export XLSX</button>
-        <button class="btn btn-danger" onclick="downloadPDF()">Export PDF</button>
-        <button class="btn btn-dark" onclick="window.print()">Print</button>
+    <div class="flex gap-sm flex-wrap">
+        <select id="departmentSelect" class="form-select form-input" style="min-width:170px; width:auto"></select>
+        <select id="yearSelect" class="form-select form-input" style="min-width:170px; width:auto"></select>
+        <button class="btn" onclick="loadAllForYear()">refresh</button>
+        <button class="btn" onclick="regenUnlocked()">regenerate unlocked</button>
+        <button class="btn" onclick="saveSnapshot()">save snapshot</button>
+        <button class="btn btn-success" onclick="downloadCSV()">csv</button>
+        <button class="btn btn-success" onclick="downloadXLSX()">xlsx</button>
+        <button class="btn btn-danger" onclick="downloadPDF()">pdf</button>
+        <button class="btn" onclick="window.print()">print</button>
         <input type="file" id="timetableImportFile" class="d-none" accept=".pdf,image/png,image/jpeg,image/webp,image/gif" onchange="previewImportFromFile()">
-        <button type="button" id="previewImportTriggerBtn" class="btn btn-outline-info" onclick="document.getElementById('timetableImportFile').click()" title="Uses OpenAI or Gemini vision (API key)">Preview Import</button>
+        <button type="button" id="previewImportTriggerBtn" class="btn" onclick="document.getElementById('timetableImportFile').click()" title="Uses OpenAI or Gemini vision (API key)">preview import</button>
     </div>
 </div>
 
-<div class="card-box mb-3">
-    Click a filled slot to edit manually. Double-click any slot to lock or unlock that class-day-slot. Roll back from the version history if needed.
-    <button class="btn btn-sm btn-outline-dark ms-2" onclick="loadReports()">Load Report</button>
-    <div id="reportBox" class="mt-2"></div>
-    <div class="mt-3 pt-3 border-top">
-        <div class="muted small mb-2">
-            <b>AI import preview:</b> Upload a timetable PDF or screenshot, review the extracted rows, correct them, then apply the import.
-            Locked slots remain protected.
+<!-- Instructions Panel -->
+<div class="panel mb-md reveal-up">
+    <div class="text-sm text-secondary">
+        click a filled slot to edit manually. double-click any slot to lock or unlock that class-day-slot. roll back from the version history if needed.
+        <button class="btn btn-sm" style="margin-left:8px" onclick="loadReports()">load report</button>
+    </div>
+    <div id="reportBox" class="mt-md"></div>
+    <div class="mt-md" style="padding-top:12px; border-top:1px solid var(--border)">
+        <div class="text-xs text-muted mb-sm">
+            <strong>ai import preview:</strong> upload a timetable pdf or screenshot, review the extracted rows, correct them, then apply the import. locked slots remain protected.
         </div>
-        <div class="d-flex flex-wrap gap-2 align-items-center">
-            <label class="small mb-0">Default class label (if missing in file):</label>
-            <input type="text" id="defaultClassImport" class="form-control form-control-sm" style="max-width:220px" placeholder="Fallback class label, e.g. Y1-A">
+        <div class="flex flex-wrap gap-sm items-center">
+            <label class="text-sm">default class label (if missing):</label>
+            <input type="text" id="defaultClassImport" class="form-input" style="max-width:220px" placeholder="e.g. Y1-A">
         </div>
     </div>
 </div>
 
-<div id="importPreviewBox" class="card-box mb-3 d-none">
-    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+<!-- Import Preview -->
+<div id="importPreviewBox" class="panel mb-md d-none">
+    <div class="flex justify-between items-center mb-md flex-wrap gap-sm">
         <div>
-            <h5 class="mb-0">Import Preview</h5>
-            <div class="muted small">Edit any extracted row before applying it to the selected year.</div>
+            <div class="panel-title">import preview</div>
+            <div class="text-xs text-muted">edit any extracted row before applying it to the selected year</div>
         </div>
-        <div class="d-flex gap-2">
-            <button id="discardImportPreviewBtn" class="btn btn-outline-secondary btn-sm" onclick="clearImportPreview()">Discard Preview</button>
-            <button id="applyImportPreviewBtn" class="btn btn-primary btn-sm" onclick="applyImportPreview()">Apply Preview</button>
+        <div class="flex gap-sm">
+            <button id="discardImportPreviewBtn" class="btn btn-sm" onclick="clearImportPreview()">discard</button>
+            <button id="applyImportPreviewBtn" class="btn btn-sm btn-primary" onclick="applyImportPreview()">apply preview</button>
         </div>
     </div>
-    <div id="importPreviewMeta" class="small muted mb-2"></div>
-    <div class="table-responsive">
-        <table class="table table-bordered align-middle small" id="importPreviewTable"></table>
+    <div id="importPreviewMeta" class="text-xs text-muted mb-sm"></div>
+    <div class="table-wrap">
+        <table class="data-table" id="importPreviewTable"></table>
     </div>
 </div>
 
-<div id="importApplySummaryGlobal" class="small mb-3"></div>
+<div id="importApplySummaryGlobal" class="text-sm mb-md"></div>
 
-<div class="row g-3">
-    <div class="col-xl-8">
-        <div id="grid"></div>
-    </div>
-    <div class="col-xl-4">
-        <div class="d-flex flex-column gap-3">
-            <div class="card-box ai-sidebar">
-                <h5 class="mb-1">Version History</h5>
-                <div class="muted mb-3 small">Restore the selected year from a previous snapshot.</div>
-                <div id="versionsBox" class="version-list"></div>
+<!-- Main Grid + Sidebar -->
+<div class="grid grid-8-4">
+    <!-- Timetable Grid -->
+    <div id="grid" class="reveal-up"></div>
+
+    <!-- Sidebar -->
+    <div class="sidebar-sticky">
+        <!-- Version History -->
+        <div class="sidebar-panel reveal-up">
+            <h5>version history</h5>
+            <div class="sidebar-desc">restore the selected year from a previous snapshot</div>
+            <div id="versionsBox" class="version-list"></div>
+        </div>
+
+        <!-- NLP Assistant -->
+        <div class="sidebar-panel reveal-up">
+            <h5>nlp assistant</h5>
+            <div class="sidebar-desc">ask timetable questions in plain english, generate summaries, explain conflicts, or use the full chatbot</div>
+            <div id="aiChat" class="ai-chat mb-md">
+                <div class="ai-msg ai-msg-assistant">try: "who has DBMS on Monday?", "show free slots for Y2-A", or "explain conflicts for this year."</div>
             </div>
-            <div class="card-box ai-sidebar">
-                <h5 class="mb-1">NLP Assistant</h5>
-                <div class="muted mb-3">Ask timetable questions in plain English, generate summaries, explain conflicts, or use the full chatbot.</div>
-                <div id="aiChat" class="ai-chat mb-2">
-                    <div class="ai-msg ai-msg-assistant">Try: “Who has DBMS on Monday?”, “Show free slots for Y2-A”, or “Explain conflicts for this year.”</div>
-                </div>
-                <textarea id="aiQuestion" class="form-control mb-2" rows="3" placeholder="Type your timetable question here"></textarea>
-                <div class="d-flex gap-2 flex-wrap">
-                    <button class="btn btn-primary btn-sm" onclick="askDirectNLP()">Ask from Timetable</button>
-                    <button class="btn btn-outline-primary btn-sm" onclick="askAI()">Chatbot</button>
-                    <button class="btn btn-outline-info btn-sm" onclick="loadSummaryToChat()">Summary</button>
-                    <button class="btn btn-outline-warning btn-sm" onclick="loadConflictsToChat()">Explain Conflicts</button>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="clearAIChat()">Clear</button>
-                </div>
+            <textarea id="aiQuestion" class="form-input mb-md" rows="3" placeholder="type your timetable question here"></textarea>
+            <div class="flex gap-sm flex-wrap">
+                <button class="btn btn-sm btn-primary" onclick="askDirectNLP()">ask timetable</button>
+                <button class="btn btn-sm" onclick="askAI()">chatbot</button>
+                <button class="btn btn-sm" onclick="loadSummaryToChat()">summary</button>
+                <button class="btn btn-sm" onclick="loadConflictsToChat()">conflicts</button>
+                <button class="btn btn-sm" onclick="clearAIChat()">clear</button>
             </div>
-            <div class="card-box ai-sidebar">
-                <h5 class="mb-1">Natural-language Rules</h5>
-                <div class="muted mb-3">Examples: “Avoid labs on Friday afternoon”, “Keep DBMS in morning slots”, “Avoid Math on Monday”.</div>
-                <textarea id="ruleText" class="form-control mb-2" rows="3" placeholder="Type a scheduling rule in plain English"></textarea>
-                <div class="d-flex gap-2 flex-wrap mb-3">
-                    <button class="btn btn-sm btn-dark" onclick="saveRule()">Save Rule</button>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('ruleText').value='Avoid labs on Friday afternoon'">Example</button>
-                </div>
-                <div id="rulesBox" class="version-list"></div>
+        </div>
+
+        <!-- Natural-language Rules -->
+        <div class="sidebar-panel reveal-up">
+            <h5>natural-language rules</h5>
+            <div class="sidebar-desc">examples: "avoid labs on friday afternoon", "keep DBMS in morning slots"</div>
+            <textarea id="ruleText" class="form-input mb-md" rows="3" placeholder="type a scheduling rule in plain english"></textarea>
+            <div class="flex gap-sm flex-wrap mb-md">
+                <button class="btn btn-sm btn-gold" onclick="saveRule()">save rule</button>
+                <button class="btn btn-sm" onclick="document.getElementById('ruleText').value='Avoid labs on Friday afternoon'">example</button>
             </div>
+            <div id="rulesBox" class="version-list"></div>
         </div>
     </div>
 </div>
 
-<div id="importLoadingOverlay" class="import-loading-overlay d-none" aria-live="polite" aria-busy="true">
-    <div class="import-loading-card">
-        <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
-        <h5 id="importLoadingTitle" class="mb-2">Processing timetable import...</h5>
-        <div id="importLoadingSubtitle" class="muted">Please wait while we analyze the uploaded file.</div>
+<!-- Import Loading Overlay -->
+<div id="importLoadingOverlay" class="import-overlay d-none" aria-live="polite" aria-busy="true">
+    <div class="import-overlay-card">
+        <div class="spinner"></div>
+        <h5 id="importLoadingTitle" class="mb-sm">processing timetable import...</h5>
+        <div id="importLoadingSubtitle" class="text-muted text-sm">please wait while we analyze the uploaded file.</div>
     </div>
 </div>
 
-<style>
-td { padding: 8px; vertical-align: top; min-width: 180px; }
-.table td, .table th { color: #111827; }
-.free-cell { color: #6b7280; cursor: pointer; }
-.break-cell { background: #fff7ed; }
-.entry {
-    background: #eef2ff;
-    border: 1px solid #c7d2fe;
-    border-radius: 10px;
-    padding: 6px;
-    margin-bottom: 6px;
-    color: #111827;
-}
-.entry-break {
-    background: #fff7ed;
-    border-color: #fdba74;
-}
-.entry-break .break-title {
-    color: #9a3412;
-    font-weight: 700;
-}
-.version-item { border: 1px solid var(--border); border-radius: 12px; padding: 10px; margin-bottom: 10px; }
-.version-list { max-height: 360px; overflow-y: auto; }
-body.dark .entry { background: #1f2848; border-color: #334155; color: #e5e7eb; }
-body.dark .entry-break { background: #3f1d0d; border-color: #c2410c; }
-body.dark .entry-break .break-title { color: #fdba74; }
-body.dark .table td, body.dark .table th, body.dark .table { color: #e5e7eb !important; border-color: #334155 !important; }
-body.dark .table tr th { background: #0f172a; color: #f8fafc !important; }
-body.dark .table tr td { background: #0b1220; }
-body.dark .free-cell { color: #9ca3af !important; }
-body.dark .break-cell { background: #3f1d0d !important; }
-@media print {
-    button, select, #reportBox, .ai-sidebar, #importPreviewBox, #defaultClassImport { display: none !important; }
-    .card-box { border: 1px solid #ddd; box-shadow: none; }
-    body { background: #fff !important; }
-}
-.ai-sidebar { position: sticky; top: 12px; }
-.ai-chat {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px;
-    height: 320px;
-    overflow-y: auto;
-    background: var(--panel);
-}
-.ai-msg {
-    border-radius: 10px;
-    padding: 8px 10px;
-    margin-bottom: 8px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    font-size: 14px;
-}
-.ai-msg-user { background: #eff6ff; border: 1px solid #bfdbfe; }
-.ai-msg-assistant { background: #f3f4f6; border: 1px solid #e5e7eb; }
-body.dark .ai-msg-user { background: #172554; border-color: #1d4ed8; }
-body.dark .ai-msg-assistant { background: #111827; border-color: #374151; }
-.snapshot-button-container {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px 10px;
-    display: inline-flex !important;
-    align-items: center;
-}
-body.dark .snapshot-button-container {
-    background: rgba(148, 163, 184, 0.1);
-    border-color: var(--border);
-}
-.btn-snapshot {
-    background: transparent !important;
-    color: var(--text) !important;
-    border: none !important;
-    padding: 6px 14px !important;
-    font-weight: 500;
-    min-width: auto;
-    white-space: nowrap;
-}
-.btn-snapshot:hover {
-    background: rgba(0, 0, 0, 0.05) !important;
-}
-body.dark .btn-snapshot:hover {
-    background: rgba(255, 255, 255, 0.1) !important;
-}
-.import-loading-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(15, 23, 42, 0.45);
-    z-index: 1300;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-}
-.import-loading-card {
-    width: min(520px, 96vw);
-    background: #ffffff;
-    border-radius: 14px;
-    border: 1px solid #cbd5e1;
-    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
-    padding: 20px;
-    text-align: center;
-}
-body.dark .import-loading-card {
-    background: #111827;
-    border-color: #374151;
-}
-</style>
-
+<script id="initial-years-data" type="application/json">{{ (initial_years or [1]) | tojson }}</script>
+<script id="initial-departments-data" type="application/json">{{ (initial_departments or []) | tojson }}</script>
 <script>
 const days = ["Monday","Tuesday","Wednesday","Thursday","Friday"];
 const slots = ["09:00-10:00","10:00-11:00","11:00-12:00","13:00-14:00","14:00-15:00","15:00-16:00"];
@@ -222,10 +128,8 @@ const yearSelectEl = document.getElementById("yearSelect");
 const gridEl = document.getElementById("grid");
 const reportBoxEl = document.getElementById("reportBox");
 const aiQuestionEl = document.getElementById("aiQuestion");
-// eslint-disable-next-line no-undef
-const initialYears = {{ (initial_years or [1]) | tojson }};
-// eslint-disable-next-line no-undef
-const initialDepartments = {{ (initial_departments or []) | tojson }};
+const initialYears = JSON.parse(document.getElementById("initial-years-data") ? document.getElementById("initial-years-data").textContent : "[1]");
+const initialDepartments = JSON.parse(document.getElementById("initial-departments-data") ? document.getElementById("initial-departments-data").textContent : "[]");
 const urlParams = new URLSearchParams(window.location.search);
 function esc(value){ return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
@@ -244,8 +148,8 @@ function showImportLoading(title, subtitle){
     const overlay = document.getElementById('importLoadingOverlay');
     const titleEl = document.getElementById('importLoadingTitle');
     const subtitleEl = document.getElementById('importLoadingSubtitle');
-    if(titleEl) titleEl.textContent = title || 'Processing timetable import...';
-    if(subtitleEl) subtitleEl.textContent = subtitle || 'Please wait while we analyze the uploaded file.';
+    if(titleEl) titleEl.textContent = title || 'processing timetable import...';
+    if(subtitleEl) subtitleEl.textContent = subtitle || 'please wait while we analyze the uploaded file.';
     if(overlay) overlay.classList.remove('d-none');
     setImportButtonsDisabled(true);
 }
@@ -270,14 +174,14 @@ function renderApplySummary(summary){
     const rooms = summary.rooms || {};
     const tt = summary.timetable_entries || {};
     box.innerHTML = `
-        <div class="alert alert-success py-2 mb-0">
-            <div><b>Import apply summary</b></div>
-            <div>Classes: created ${classes.created || 0}, reused ${classes.reused || 0}</div>
-            <div>Batches: created ${batches.created || 0}, reused ${batches.reused || 0}</div>
-            <div>Faculties: created ${faculties.created || 0}, reused ${faculties.reused || 0}</div>
-            <div>Subjects: created ${subjects.created || 0}, reused ${subjects.reused || 0}</div>
-            <div>Rooms/Labs: created ${rooms.created || 0}, reused ${rooms.reused || 0}</div>
-            <div>Timetable: inserted ${tt.inserted || 0}, unique slots ${tt.unique_slots || 0}, skipped locked ${tt.skipped_locked || 0}, skipped invalid ${tt.skipped_invalid || 0}</div>
+        <div class="alert alert-success">
+            <div><strong>import apply summary</strong></div>
+            <div>classes: created ${classes.created || 0}, reused ${classes.reused || 0}</div>
+            <div>batches: created ${batches.created || 0}, reused ${batches.reused || 0}</div>
+            <div>faculties: created ${faculties.created || 0}, reused ${faculties.reused || 0}</div>
+            <div>subjects: created ${subjects.created || 0}, reused ${subjects.reused || 0}</div>
+            <div>rooms/labs: created ${rooms.created || 0}, reused ${rooms.reused || 0}</div>
+            <div>timetable: inserted ${tt.inserted || 0}, unique slots ${tt.unique_slots || 0}, skipped locked ${tt.skipped_locked || 0}, skipped invalid ${tt.skipped_invalid || 0}</div>
         </div>`;
 }
 
@@ -315,7 +219,7 @@ function renderYearOptions(years){
 function renderDepartmentOptions(departments){
     const values = (departments && departments.length ? departments : initialDepartments || []).map(v => String(v).trim()).filter(Boolean);
     if(values.length){
-        departmentSelectEl.innerHTML = `<option value="">All Departments</option>` + values.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('');
+        departmentSelectEl.innerHTML = `<option value="">all departments</option>` + values.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('');
         const selectedDepartment = pickPreferredValue(
             [departmentSelectEl.dataset.selected, urlParams.get('department'), localStorage.getItem('last_timetable_department'), ''],
             ['', ...values],
@@ -325,7 +229,7 @@ function renderDepartmentOptions(departments){
         departmentSelectEl.dataset.selected = departmentSelectEl.value;
         departmentSelectEl.disabled = false;
     } else {
-        departmentSelectEl.innerHTML = `<option value="">No Departments</option>`;
+        departmentSelectEl.innerHTML = `<option value="">no departments</option>`;
         departmentSelectEl.value = '';
         departmentSelectEl.dataset.selected = '';
         departmentSelectEl.disabled = true;
@@ -401,39 +305,38 @@ function loadTable(){
         const classes = [...new Set(data.map(e=>e.class_name))];
         if(!classes.length){
             const deptText = department ? `, ${department} department` : '';
-            const suggestionText = department ? 'Try selecting a different year, department or regenerate unlocked slots.' : 'Try selecting a different year or regenerate unlocked slots.';
-            gridEl.innerHTML = `<div class="card-box">No timetable generated for Year ${year}${deptText}. ${suggestionText}</div>`;
+            const suggestionText = department ? 'try selecting a different year, department or regenerate unlocked slots.' : 'try selecting a different year or regenerate unlocked slots.';
+            gridEl.innerHTML = `<div class="panel">no timetable generated for year ${year}${deptText}. ${suggestionText}</div>`;
             return;
         }
         let html = "";
         classes.forEach(cls=>{
             const classData = data.filter(x=>x.class_name===cls);
-            const safeCls = cls.replace(/'/g, "\'");
-            html += `<div class="card-box mb-3"><h5 class="mb-3">${cls}</h5>`;
-            html += "<div class='table-responsive'><table class='table table-bordered align-middle'>";
-            html += "<tr><th style='width:130px'>Time / Day</th>" + days.map(d=>`<th>${d}</th>`).join("") + "</tr>";
+            const safeCls = cls.replace(/'/g, "\\'");
+            html += `<div class="panel mb-md"><div class="panel-title mb-md">${cls}</div>`;
+            html += "<div class='table-wrap'><table class='data-table'>";
+            html += "<tr><th style='width:130px'>time / day</th>" + days.map(d=>`<th>${d}</th>`).join("") + "</tr>";
             slots.forEach((time, slotIndex)=>{
-                html += `<tr><th>${time}</th>`;
+                html += `<tr><th style="text-align:left; padding:8px 16px; font-weight:500; color:var(--text-primary)">${time}</th>`;
                 days.forEach(day=>{
-                    const safeDay = day.replace(/'/g, "\'");
+                    const safeDay = day.replace(/'/g, "\\'");
                     const entries = classData.filter(e=>e.day===day && e.slot_index===slotIndex);
                     if(!entries.length){
-                        html += `<td class="free-cell" ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},null)">Free</td>`;
+                        html += `<td class="free-cell" ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},null)">free</td>`;
                     } else {
                         const isBreakCell = entries.some(entry => entry.is_break || ['break','lunch break'].includes(String(entry.subject || '').trim().toLowerCase()));
                         if(isBreakCell){
-                            html += `<td class="break-cell">${entries.map(entry=>`
-                                <div class="entry entry-break">
-                                    <div class="break-title">${entry.subject || 'Lunch Break'}</div>
-                                    <small>Reserved slot</small>
+                            html += `<td>${entries.map(entry=>`
+                                <div class="entry-chip is-break">
+                                    <div class="break-title">${entry.subject || 'lunch break'}</div>
+                                    <div class="entry-meta">reserved slot</div>
                                 </div>
                             `).join("")}</td>`;
                         } else {
-                            html += `<td ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},'${encodeURIComponent(JSON.stringify(entries[0]))}')">${entries.map(entry=>`
-                                <div class="entry">
-                                    <b>${entry.subject}</b> ${entry.is_lab ? "<span class='badge text-bg-info'>Lab</span>" : "<span class='badge text-bg-light'>Theory</span>"}
-                                    <div>${entry.faculty || '—'}</div>
-                                    <small>${entry.room || '—'}${entry.batch_name ? " | Batch " + entry.batch_name : ""} ${entry.locked ? "| Locked" : ""}</small>
+                            html += `<td ondblclick="toggleLock('${safeCls}','${safeDay}',${slotIndex})" onclick="editSlot('${safeCls}','${safeDay}',${slotIndex},'${encodeURIComponent(JSON.stringify(entries[0]))}')" style="cursor:pointer">${entries.map(entry=>`
+                                <div class="entry-chip ${entry.is_lab ? 'is-lab' : ''}">
+                                    <div class="entry-subject">${entry.subject} <span class="badge ${entry.is_lab ? 'badge-lab' : 'badge-theory'}">${entry.is_lab ? 'lab' : 'theory'}</span> ${entry.locked ? '<span class="badge badge-locked">locked</span>' : ''}</div>
+                                    <div class="entry-meta">${entry.faculty || '—'} · ${entry.room || '—'}${entry.batch_name ? ' · batch ' + entry.batch_name : ''}</div>
                                 </div>
                             `).join("")}</td>`;
                         }
@@ -446,7 +349,7 @@ function loadTable(){
         gridEl.innerHTML = html;
     })
     .catch(err=>{
-        gridEl.innerHTML = `<div class="card-box text-danger">Unable to load timetable: ${esc(err.message || err)}</div>`;
+        gridEl.innerHTML = `<div class="panel text-danger">unable to load timetable: ${esc(err.message || err)}</div>`;
     });
 }
 
@@ -455,14 +358,14 @@ function loadVersions(){
         const box = document.getElementById('versionsBox');
         box.innerHTML = data.map(v=>`
             <div class="version-item">
-                <div class="fw-semibold">${esc(v.label)}</div>
-                <div class="small text-secondary">${v.created_at} | Scope: ${v.scope_year ? 'Y' + v.scope_year : 'All years'} | Rows: ${v.entry_count}</div>
-                ${v.note ? `<div class="small mt-1">${esc(v.note)}</div>` : ''}
-                <div class="mt-2 d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-danger" onclick="rollbackVersion(${v.id})">Rollback</button>
+                <div class="fw-600">${esc(v.label)}</div>
+                <div class="text-xs text-muted">${v.created_at} · scope: ${v.scope_year ? 'Y' + v.scope_year : 'all years'} · rows: ${v.entry_count}</div>
+                ${v.note ? `<div class="text-xs mt-xs">${esc(v.note)}</div>` : ''}
+                <div class="mt-sm">
+                    <button class="btn btn-sm btn-danger" onclick="rollbackVersion(${v.id})">rollback</button>
                 </div>
             </div>
-        `).join('') || `<div class="muted">No saved versions yet.</div>`;
+        `).join('') || '<div class="empty-state">no saved versions yet</div>';
     });
 }
 async function saveSnapshot(){
@@ -544,9 +447,13 @@ function regenUnlocked(){
 function loadReports(){
     fetch('/reports').then(r=>r.json()).then(data=>{
         reportBoxEl.innerHTML = `
-            <div><b>Total:</b> ${data.total_entries}, <b>Locked:</b> ${data.locked_entries}, <b>Manual:</b> ${data.manual_entries}</div>
-            <div><b>By Year:</b> ${data.by_year.map(x=>`Y${x.year}:${x.entries}`).join(', ')}</div>
-            <div><b>Validation Issues:</b> ${data.validation_issues.length}</div>`;
+            <div class="text-sm text-secondary">
+                <strong>total:</strong> ${data.total_entries} ·
+                <strong>locked:</strong> ${data.locked_entries} ·
+                <strong>manual:</strong> ${data.manual_entries}<br>
+                <strong>by year:</strong> ${data.by_year.map(x=>`Y${x.year}:${x.entries}`).join(', ')}<br>
+                <strong>validation issues:</strong> ${data.validation_issues.length}
+            </div>`;
     });
 }
 
@@ -568,40 +475,40 @@ function renderImportPreview(){
         return;
     }
     box.classList.remove('d-none');
-    meta.textContent = `${importPreviewEntries.length} editable row(s) ready for import into Year ${currentYear()}.`;
+    meta.textContent = `${importPreviewEntries.length} editable row(s) ready for import into year ${currentYear()}.`;
     table.innerHTML = `
         <thead>
             <tr>
-                <th>#</th><th>Class</th><th>Day</th><th>Slot</th><th>Subject</th><th>Faculty</th><th>Room</th><th>Batch</th><th>Type</th><th>Initial validation</th><th></th>
+                <th>#</th><th>class</th><th>day</th><th>slot</th><th>subject</th><th>faculty</th><th>room</th><th>batch</th><th>type</th><th>validation</th><th></th>
             </tr>
         </thead>
         <tbody>
             ${importPreviewEntries.map((row, idx)=>`
                 <tr>
                     <td>${idx + 1}</td>
-                    <td><input class="form-control form-control-sm" data-field="class_name" data-idx="${idx}" value="${esc(row.class_name || '')}"></td>
+                    <td><input class="form-input" style="min-width:100px" data-field="class_name" data-idx="${idx}" value="${esc(row.class_name || '')}"></td>
                     <td>
-                        <select class="form-select form-select-sm" data-field="day" data-idx="${idx}">
+                        <select class="form-select form-input" data-field="day" data-idx="${idx}">
                             ${days.map(d=>`<option value="${d}" ${row.day===d?'selected':''}>${d}</option>`).join('')}
                         </select>
                     </td>
                     <td>
-                        <select class="form-select form-select-sm" data-field="slot_index" data-idx="${idx}">
+                        <select class="form-select form-input" data-field="slot_index" data-idx="${idx}">
                             ${slots.map((s,i)=>`<option value="${i}" ${parseInt(row.slot_index)===i?'selected':''}>${i+1} · ${s}</option>`).join('')}
                         </select>
                     </td>
-                    <td><input class="form-control form-control-sm" data-field="subject" data-idx="${idx}" value="${esc(row.subject || '')}"></td>
-                    <td><input class="form-control form-control-sm" data-field="faculty" data-idx="${idx}" value="${esc(row.faculty || '')}"></td>
-                    <td><input class="form-control form-control-sm" data-field="room" data-idx="${idx}" value="${esc(row.room || '')}"></td>
-                    <td><input class="form-control form-control-sm" data-field="batch_name" data-idx="${idx}" value="${esc(row.batch_name || '')}"></td>
+                    <td><input class="form-input" style="min-width:100px" data-field="subject" data-idx="${idx}" value="${esc(row.subject || '')}"></td>
+                    <td><input class="form-input" style="min-width:100px" data-field="faculty" data-idx="${idx}" value="${esc(row.faculty || '')}"></td>
+                    <td><input class="form-input" style="min-width:80px" data-field="room" data-idx="${idx}" value="${esc(row.room || '')}"></td>
+                    <td><input class="form-input" style="min-width:60px" data-field="batch_name" data-idx="${idx}" value="${esc(row.batch_name || '')}"></td>
                     <td>
-                        <select class="form-select form-select-sm" data-field="is_lab" data-idx="${idx}">
-                            <option value="false" ${row.is_lab ? '' : 'selected'}>Theory</option>
-                            <option value="true" ${row.is_lab ? 'selected' : ''}>Lab</option>
+                        <select class="form-select form-input" data-field="is_lab" data-idx="${idx}">
+                            <option value="false" ${row.is_lab ? '' : 'selected'}>theory</option>
+                            <option value="true" ${row.is_lab ? 'selected' : ''}>lab</option>
                         </select>
                     </td>
-                    <td class="text-danger">${esc((row.validation_issues || []).join('; ') || 'OK')}</td>
-                    <td><button class="btn btn-sm btn-outline-danger" onclick="deletePreviewRow(${idx})">Delete</button></td>
+                    <td class="text-danger text-xs">${esc((row.validation_issues || []).join('; ') || 'ok')}</td>
+                    <td><button class="btn btn-sm btn-danger" onclick="deletePreviewRow(${idx})">×</button></td>
                 </tr>
             `).join('')}
         </tbody>`;
@@ -629,8 +536,8 @@ function previewImportFromFile(){
     if(dc) fd.append('default_class_name', dc);
     importPreviewBusy = true;
     showImportLoading(
-        'Processing timetable import...',
-        'Extracting classes, batches, faculties, subjects, and rooms. Please wait while we analyze the uploaded file.'
+        'processing timetable import...',
+        'extracting classes, batches, faculties, subjects, and rooms. please wait.'
     );
     fetch('/preview_timetable_import', {method:'POST', body: fd})
         .then(async r=>{
@@ -661,8 +568,8 @@ function applyImportPreview(){
     if(!rows.length){ alert('No preview rows to apply.'); return; }
     importApplyBusy = true;
     showImportLoading(
-        'Creating resources and applying timetable...',
-        'Please wait while we create missing classes, batches, faculties, subjects, rooms, and import timetable entries.'
+        'creating resources and applying timetable...',
+        'please wait while we create missing resources and import entries.'
     );
     fetch('/apply_timetable_import', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -693,7 +600,7 @@ function appendAIMessage(role, text){
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
 }
-function clearAIChat(){ document.getElementById('aiChat').innerHTML = `<div class="ai-msg ai-msg-assistant">Chat cleared. Ask a new timetable question.</div>`; }
+function clearAIChat(){ document.getElementById('aiChat').innerHTML = `<div class="ai-msg ai-msg-assistant">chat cleared. ask a new timetable question.</div>`; }
 function askQuickImprovements(){ aiQuestionEl.value = 'Give top 5 improvement suggestions for this year\'s timetable and mention expected impact.'; askAI(); }
 function askDirectNLP(){
     const question = (aiQuestionEl.value || '').trim();
@@ -719,12 +626,12 @@ function loadRules(){
         const box = document.getElementById('rulesBox');
         box.innerHTML = data.map(rule=>`
             <div class="version-item">
-                <div class="fw-semibold">${esc(rule.summary || rule.text)}</div>
-                <div class="small text-secondary">${esc(rule.text || '')}</div>
-                <div class="small mt-1">Scope: ${rule.scope_year ? 'Y' + rule.scope_year : 'All years'}</div>
-                <div class="mt-2"><button class="btn btn-sm btn-outline-danger" onclick="deleteRule(${rule.id})">Delete</button></div>
+                <div class="fw-600">${esc(rule.summary || rule.text)}</div>
+                <div class="text-xs text-muted">${esc(rule.text || '')}</div>
+                <div class="text-xs mt-xs">scope: ${rule.scope_year ? 'Y' + rule.scope_year : 'all years'}</div>
+                <div class="mt-sm"><button class="btn btn-sm btn-danger" onclick="deleteRule(${rule.id})">delete</button></div>
             </div>
-        `).join('') || `<div class="muted">No natural-language rules saved for this scope.</div>`;
+        `).join('') || '<div class="empty-state">no rules saved for this scope</div>';
     });
 }
 function saveRule(){
@@ -756,20 +663,20 @@ function askAI(){
     if(!question){ alert('Please type a question for the AI assistant.'); return; }
     appendAIMessage('user', `Year ${currentYear()}: ${question}`);
     aiQuestionEl.value = '';
-    appendAIMessage('assistant', 'Analyzing timetable...');
+    appendAIMessage('assistant', 'analyzing timetable...');
     fetch('/ai_assistant', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({year: parseInt(currentYear()), question})
     }).then(r=>r.json()).then(data=>{
         const chat = document.getElementById('aiChat');
         const loading = chat.querySelector('.ai-msg:last-child');
-        if(loading && loading.textContent === 'Analyzing timetable...') loading.remove();
+        if(loading && loading.textContent === 'analyzing timetable...') loading.remove();
         if(data.error){ appendAIMessage('assistant', 'Error: ' + data.error); return; }
         appendAIMessage('assistant', data.answer || 'No response from AI.');
     }).catch(()=>{
         const chat = document.getElementById('aiChat');
         const loading = chat.querySelector('.ai-msg:last-child');
-        if(loading && loading.textContent === 'Analyzing timetable...') loading.remove();
+        if(loading && loading.textContent === 'analyzing timetable...') loading.remove();
         appendAIMessage('assistant', 'Failed to reach AI assistant endpoint.');
     });
 }

@@ -1,33 +1,49 @@
 {% extends "base.html" %}
-{% block content %}
-<h3 class="mb-1">Room Management</h3>
-<div class="muted mb-3">Room capacities are now enforced for both theory classrooms and labs.</div>
+{% block title %}rooms — ai timetable{% endblock %}
 
-<div class="card-box mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="mb-0">Room</h5>
-        <!--<span id="roomModeBadge" class="badge text-bg-primary">New</span>-->
+{% block content %}
+<div class="section-header reveal-up">
+    <h3>room management</h3>
+    <div class="section-desc">room capacities are enforced for both theory classrooms and labs</div>
+</div>
+
+<!-- Room Form -->
+<div class="panel mb-lg reveal-up">
+    <div class="panel-header">
+        <div class="panel-title">room</div>
     </div>
     <input type="hidden" id="room_edit_id">
-    <div class="row g-2 mb-2">
-        <div class="col-md-4"><input id="name" class="form-control" placeholder="Room name"></div>
-        <div class="col-md-4">
-            <select id="type" class="form-select">
+
+    <div class="form-row form-row-3 mb-lg">
+        <div class="form-group">
+            <label class="form-label" for="name">room name</label>
+            <input id="name" class="form-input" placeholder="e.g. Room 301">
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="type">room type</label>
+            <select id="type" class="form-select form-input">
                 <option>Classroom</option>
                 <option>Lab</option>
             </select>
         </div>
-        <div class="col-md-4"><input id="capacity" type="number" min="1" class="form-control" value="60" placeholder="Capacity"></div>
+        <div class="form-group">
+            <label class="form-label" for="capacity">capacity</label>
+            <input id="capacity" type="number" min="1" class="form-input" value="60">
+        </div>
     </div>
-    <div class="d-flex gap-2">
-        <button class="btn btn-warning" onclick="saveRoom()">Save Room</button>
-        <button class="btn btn-outline-secondary" onclick="resetRoomForm()">Clear</button>
+
+    <div class="btn-group">
+        <button class="btn btn-gold" onclick="saveRoom()">save room</button>
+        <button class="btn" onclick="resetRoomForm()">clear</button>
     </div>
 </div>
 
-<div class="card-box">
-    <h5>Rooms</h5>
-    <div id="list" class="mt-2"></div>
+<!-- Room List -->
+<div class="panel reveal-up">
+    <div class="panel-header">
+        <div class="panel-title">rooms</div>
+    </div>
+    <div id="list"></div>
 </div>
 
 <script>
@@ -38,8 +54,6 @@ function resetRoomForm(){
     document.getElementById('name').value='';
     document.getElementById('type').value='Classroom';
     document.getElementById('capacity').value='60';
-    /**document.getElementById('roomModeBadge').textContent='New';
-    document.getElementById('roomModeBadge').className='badge text-bg-primary';**/
 }
 async function saveRoom(){
     try {
@@ -66,8 +80,6 @@ function startEditRoom(id){
     document.getElementById('name').value=r.name;
     document.getElementById('type').value=r.type;
     document.getElementById('capacity').value=r.capacity;
-    /**document.getElementById('roomModeBadge').textContent='Editing';
-    document.getElementById('roomModeBadge').className='badge text-bg-warning';**/
     window.scrollTo({top:0, behavior:'smooth'});
 }
 async function deleteRoom(id){
@@ -85,20 +97,22 @@ async function deleteRoom(id){
 function loadRooms(){
     fetch('/get_rooms').then(res=>res.json()).then(data=>{
         roomCache = data;
+        if (!data.length) {
+            document.getElementById('list').innerHTML = '<div class="empty-state">no rooms added yet — create your first entry above</div>';
+            return;
+        }
         document.getElementById('list').innerHTML = data.map(r=>`
-            <div class="border rounded-3 p-3 mb-2">
-                <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div>
-                        <div class="fw-semibold">${r.name}</div>
-                        <div class="small">${r.type} | Capacity: ${r.capacity}</div>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-primary" onclick="startEditRoom(${r.id})">Edit</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteRoom(${r.id})">Delete</button>
-                    </div>
+            <div class="list-item">
+                <div>
+                    <div class="item-name">${r.name}</div>
+                    <div class="item-meta">${r.type} · capacity: ${r.capacity}</div>
+                </div>
+                <div class="item-actions">
+                    <button class="btn btn-sm" onclick="startEditRoom(${r.id})">edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteRoom(${r.id})">delete</button>
                 </div>
             </div>
-        `).join('') || `<div class="muted">No rooms added yet.</div>`;
+        `).join('');
     });
 }
 resetRoomForm();

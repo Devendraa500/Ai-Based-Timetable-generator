@@ -1,116 +1,139 @@
 {% extends "base.html" %}
+{% block title %}dashboard — ai timetable{% endblock %}
 
 {% block content %}
-<div class="row g-3 mb-3">
-    <div class="col-md-3">
-        <div class="card-box feature-card">
-            <span class="feature-icon">👨‍🏫</span>
-            <div class="fw-semibold">Teacher Management</div>
-            <div class="muted small">Faculty-year assignment and workload rules</div>
+<!-- Section Header -->
+<div class="section-header reveal-up">
+    <h3>command center</h3>
+    <div class="section-desc">intelligent scheduling for year-wise and batch-wise timetables</div>
+</div>
+
+<!-- Feature Cards Grid -->
+<div class="feature-grid mb-xl">
+    <div class="card-premium animated-border reveal-up">
+        <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
+        <div class="card-label">teacher management</div>
+        <div class="card-desc">faculty-year assignment, workload limits, and unavailability rules</div>
     </div>
-    <div class="col-md-3">
-        <div class="card-box feature-card">
-            <span class="feature-icon">📚</span>
-            <div class="fw-semibold">Class & Subjects</div>
-            <div class="muted small">Year-wise subject mapping and class divisions</div>
+    <div class="card-premium animated-border reveal-up">
+        <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         </div>
+        <div class="card-label">classes & subjects</div>
+        <div class="card-desc">year-wise subject mapping and class division configuration</div>
     </div>
-    <div class="col-md-3">
-        <div class="card-box feature-card">
-            <span class="feature-icon">🕒</span>
-            <div class="fw-semibold">Time Slots</div>
-            <div class="muted small">Continuous sessions and conflict checks</div>
+    <div class="card-premium animated-border reveal-up">
+        <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
+        <div class="card-label">time slot engine</div>
+        <div class="card-desc">continuous sessions with automated conflict detection</div>
     </div>
-    <div class="col-md-3">
-        <div class="card-box feature-card">
-            <span class="feature-icon">🧠</span>
-            <div class="fw-semibold">AI Optimization</div>
-            <div class="muted small">Batch-wise lab scheduling with capacities</div>
+    <div class="card-premium animated-border reveal-up">
+        <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
         </div>
+        <div class="card-label">ai optimization</div>
+        <div class="card-desc">batch-wise lab scheduling with capacity-aware allocation</div>
     </div>
 </div>
 
-<div class="surface-panel mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-2">
+<!-- Generate Section -->
+<div class="panel mb-lg reveal-up">
+    <div class="flex justify-between items-center flex-wrap gap-md">
         <div>
-            <h4 class="mb-0">Auto Generate Timetable</h4>
-            <div class="muted">Supports 1st, 2nd, 3rd and 4th year independent timetable views.</div>
+            <div class="panel-title">auto generate timetable</div>
+            <div class="panel-subtitle">supports 1st, 2nd, 3rd and 4th year independent timetable views</div>
         </div>
-        <div class="d-flex gap-2">
-            <button onclick="generate()" class="btn btn-dark">Auto Generate</button>
-            <button onclick="validate()" class="btn btn-outline-secondary">Validate</button>
+        <div class="btn-group">
+            <button onclick="generate()" class="btn btn-gold magnetic">auto generate</button>
+            <button onclick="validate()" class="btn magnetic">validate</button>
         </div>
     </div>
 </div>
 
-<div id="stats" class="row g-3"></div>
-<div id="result" class="mt-3"></div>
+<!-- Stats Grid -->
+<div id="stats" class="grid grid-3 mb-lg"></div>
+
+<!-- Result Area -->
+<div id="result"></div>
 
 <script>
 const statsEl = document.getElementById('stats');
 const resultEl = document.getElementById('result');
 
 fetch('/stats')
-.then(res=>res.json())
-.then(data=>{
-    let html="";
-    for(let key in data){
-        html+=`
-        <div class="col-md-4">
-            <div class="card-box">
-                <div class="muted">${key}</div>
-                <div class="fs-5 fw-semibold">${Array.isArray(data[key]) ? data[key].join(", ") : data[key]}</div>
-            </div>
+.then(res => res.json())
+.then(data => {
+    let html = "";
+    for (let key in data) {
+        html += `
+        <div class="stat-card reveal-up">
+            <div class="stat-label">${key}</div>
+            <div class="stat-value">${Array.isArray(data[key]) ? data[key].join(", ") : data[key]}</div>
         </div>`;
     }
-    statsEl.innerHTML=html;
+    statsEl.innerHTML = html;
+
+    // Animate newly added stats
+    if (typeof gsap !== 'undefined') {
+        gsap.from('#stats .stat-card', {
+            opacity: 0, y: 20, stagger: 0.06, duration: 0.5, ease: 'power3.out'
+        });
+    }
 });
 
-function renderGenerationResult(data){
+function renderGenerationResult(data) {
     const unplaced = data.unplaced || [];
     const details = data.details || {};
-    let html = `<div class="card-box"><b>${data.message || 'Done'}</b><br>Placed items: ${data.placed_count || 0}</div>`;
-    if(data.status === 'incomplete'){
-        html += `<div class="card-box mt-2"><b>Setup summary</b><div>Classes: ${details.classes ?? 0}</div><div>Rooms: ${details.rooms ?? 0}</div><div>Subjects: ${details.subjects ?? 0}</div><div>Faculty: ${details.faculty ?? 0}</div></div>`;
-        if((details.invalid_subjects || []).length){
-            html += `<div class="card-box mt-2"><b>Fix these subject mappings</b><ul class="mb-0">${details.invalid_subjects.map(x=>`<li>${x}</li>`).join('')}</ul></div>`;
+    let html = `<div class="panel mb-md"><strong>${data.message || 'Done'}</strong><br>Placed items: ${data.placed_count || 0}</div>`;
+    if (data.status === 'incomplete') {
+        html += `<div class="panel mb-md">
+            <strong>setup summary</strong>
+            <div class="text-sm text-muted mt-sm">
+                classes: ${details.classes ?? 0} · rooms: ${details.rooms ?? 0} · subjects: ${details.subjects ?? 0} · faculty: ${details.faculty ?? 0}
+            </div>
+        </div>`;
+        if ((details.invalid_subjects || []).length) {
+            html += `<div class="panel mb-md"><strong>fix these subject mappings</strong><ul style="margin:8px 0 0 16px; color:var(--danger)">${details.invalid_subjects.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
         }
     }
-    if(unplaced.length){
-        html += `<div class="card-box mt-2"><b>Unplaced (${unplaced.length})</b><ul class="mb-0">` +
-            unplaced.slice(0, 20).map(u=>`<li>Y${u.year} ${u.class_name} - ${u.subject} (${u.reason})</li>`).join("") +
-            `</ul></div>`;
+    if (unplaced.length) {
+        html += `<div class="panel mb-md"><strong>unplaced (${unplaced.length})</strong><ul style="margin:8px 0 0 16px; color:var(--warning)">`
+            + unplaced.slice(0, 20).map(u => `<li>Y${u.year} ${u.class_name} - ${u.subject} (${u.reason})</li>`).join("")
+            + `</ul></div>`;
     }
     resultEl.innerHTML = html;
 }
 
-function generate(){
+function generate() {
+    resultEl.innerHTML = `<div class="panel"><div class="flex items-center gap-md"><div class="import-overlay .spinner" style="width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;"></div> generating timetable...</div></div>`;
     fetch('/generate')
-    .then(r=>r.json())
+    .then(r => r.json())
     .then(renderGenerationResult)
     .catch(err => {
-        resultEl.innerHTML = `<div class="card-box text-danger">${err.message || 'Generation failed.'}</div>`;
+        resultEl.innerHTML = `<div class="panel text-danger">${err.message || 'Generation failed.'}</div>`;
     });
 }
-function validate(){
-fetch('/validate')
-.then(r=>r.json())
-.then(data=>{
-let html = "<div class='card-box'>";
-if(data.length === 0){
-    html += "No conflicts found.";
-} else {
-    html += data.map(x=>`<div>${x}</div>`).join("");
-}
-html += "</div>";
-resultEl.innerHTML=html;
-})
-.catch(err => {
-    resultEl.innerHTML = `<div class="card-box text-danger">${err.message || 'Validation failed.'}</div>`;
-});
+
+function validate() {
+    fetch('/validate')
+    .then(r => r.json())
+    .then(data => {
+        let html = '<div class="panel">';
+        if (data.length === 0) {
+            html += '<span class="text-success">no conflicts found.</span>';
+        } else {
+            html += data.map(x => `<div class="text-sm mb-xs">${x}</div>`).join("");
+        }
+        html += '</div>';
+        resultEl.innerHTML = html;
+    })
+    .catch(err => {
+        resultEl.innerHTML = `<div class="panel text-danger">${err.message || 'Validation failed.'}</div>`;
+    });
 }
 </script>
-
 {% endblock %}
